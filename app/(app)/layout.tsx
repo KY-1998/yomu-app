@@ -1,10 +1,21 @@
 // ログイン後の共通レイアウト: ヘッダー + ボトムナビ
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { Home, Camera, UserRound } from "lucide-react";
 
-export default function AppLayout({
+export default async function AppLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/");
+  }
+
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col">
       {/* ヘッダー */}
@@ -31,11 +42,7 @@ export default function AppLayout({
             <Home className="size-5" strokeWidth={1.6} />
             <span className="text-[10px]">きょう</span>
           </Link>
-          <Link
-            href="/post"
-            className="-mt-6 flex size-14 items-center justify-center rounded-full bg-accent text-white shadow-lg shadow-accent/25 transition-transform active:scale-95"
-            aria-label="投稿する"
-          >
+          <Link href="/post" className="-mt-6 flex size-14 items-center justify-center rounded-full bg-accent text-white shadow-lg shadow-accent/25 transition-transform active:scale-95" aria-label="投稿する">
             <Camera className="size-6" strokeWidth={1.8} />
           </Link>
           <Link href="/home" className="flex flex-col items-center gap-0.5 p-2 text-muted transition-colors hover:text-foreground">
