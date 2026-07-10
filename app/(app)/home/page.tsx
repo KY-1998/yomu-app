@@ -9,9 +9,9 @@ type PostData = {
   id: string;
   note: string;
   created_at: string;
-  profiles: { username: string; full_name: string } | null;
+  profiles: { username: string; display_name: string } | null;
   post_items: { category: string; image_url: string }[];
-  reactions: { emoji: string; author_id: string }[];
+  reactions: { emoji: string; user_id: string }[];
   imageUrls: Record<string, string>;
 };
 
@@ -31,12 +31,12 @@ export default function HomePage() {
         .from("posts")
         .select(`
           id, note, created_at,
-          profiles!posts_author_id_fkey ( username, full_name ),
+          profiles!posts_user_id_fkey ( username, display_name ),
           post_items ( category, image_url ),
-          reactions ( emoji, author_id )
+          reactions ( emoji, user_id )
         `)
-        .eq("date", jstToday())
-        .neq("author_id", user.id)
+        .eq("post_date", jstToday())
+        .neq("user_id", user.id)
         .order("created_at", { ascending: false });
       if (data) {
         const withUrls = await Promise.all(
@@ -56,7 +56,7 @@ export default function HomePage() {
       setLoading(false);
     }
     load();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const aggregateReactions = (reactions: { emoji: string }[]) => {
@@ -93,7 +93,7 @@ export default function HomePage() {
           return (
             <article key={post.id}>
               <div className="mb-3 flex items-baseline justify-between">
-                <p className="font-heading text-sm">{author?.full_name || author?.username}</p>
+                <p className="font-heading text-sm">{author?.display_name || author?.username}</p>
                 <p className="text-right font-latin text-[10px] tracking-wide text-muted">
                   @{author?.username} ・ {new Date(post.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Tokyo" })}
                 </p>
