@@ -1,12 +1,17 @@
 "use client";
-// ランディングページ（ログイン前）
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { CATEGORIES } from "@/lib/utils";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Mail, CheckCircle2 } from "lucide-react";
 
 export default function LandingPage() {
   const supabase = createClient();
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [magicSent, setMagicSent] = useState(false);
+  const [magicLoading, setMagicLoading] = useState(false);
+  const [magicError, setMagicError] = useState<string | null>(null);
 
   async function handleGoogleLogin() {
     await supabase.auth.signInWithOAuth({
@@ -17,60 +22,74 @@ export default function LandingPage() {
     });
   }
 
+  async function handleMagicLink() {
+    if (!email.trim()) return;
+    setMagicLoading(true); setMagicError(null);
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+    });
+    if (error) { setMagicError(error.message); setMagicLoading(false); }
+    else setMagicSent(true);
+  }
+
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col px-7 pb-12 pt-16">
-      {/* ロゴ */}
-      <p className="font-latin text-xl tracking-tight text-accent">yomu</p>
-
-      {/* キャッチコピー */}
-      <section className="mt-16">
-        <h1 className="font-heading text-[1.9rem] leading-[1.7] tracking-wide">
-          友達の今日を見る。
-          <br />
-          あなたの今日を届ける。
-        </h1>
-        <p className="mt-6 text-sm leading-7 text-muted">
-          顔・景色・天気・ご飯。
-          <br />
-          4枚の写真で綴る、1日1回だけのSNS。
-          <br />
-          あなたが投稿すると、友達の今日が見えます。
+    <div className="flex min-h-dvh flex-col items-center justify-center gap-10 p-6">
+      <div className="flex flex-col items-center gap-2">
+        <h1 className="font-latin text-4xl font-bold tracking-tight">yomu</h1>
+        <p className="text-center text-sm text-muted">
+          毎日4枚の写真を交換する、<br />友達とだけのSNS
         </p>
-      </section>
+      </div>
 
-      {/* 4カテゴリのプレビュー（2×2） */}
-      <section className="mt-12 grid grid-cols-2 gap-3">
-        {CATEGORIES.map((c) => (
-          <div
-            key={c.key}
-            className="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-muted-soft bg-card"
-          >
-            <span className="text-3xl opacity-70">{c.emoji}</span>
-            <span className="font-heading text-sm">{c.label}</span>
-            <span className="font-latin text-[10px] uppercase tracking-[0.2em] text-muted">
-              {c.key}
-            </span>
-          </div>
-        ))}
-      </section>
-
-      {/* CTA */}
-      <section className="mt-auto flex flex-col gap-3 pt-14">
-        <Button size="lg" className="w-full" onClick={handleGoogleLogin}>
-          <svg viewBox="0 0 24 24" className="size-4 fill-current" aria-hidden>
-            <path d="M21.35 11.1H12v2.9h5.35c-.5 2.5-2.6 4.3-5.35 4.3a5.8 5.8 0 1 1 0-11.6c1.5 0 2.8.55 3.8 1.45l2.15-2.15A8.7 8.7 0 1 0 12 20.7c5 0 8.7-3.5 8.7-8.7 0-.3-.02-.6-.05-.9z" />
+      <div className="flex w-full max-w-xs flex-col gap-4">
+        {/* Google Login */}
+        <Button size="lg" className="w-full gap-2" onClick={handleGoogleLogin}>
+          <svg viewBox="0 0 24 24" className="size-4" aria-hidden>
+            <path fill="currentColor" d="M12 11v2.4h6.8c-.3 1.8-2 4.6-6.8 4.6-4.1 0-7.5-3.4-7.5-7.5s3.4-7.5 7.5-7.5c2.3 0 3.9.99 4.8 1.84l3.26-3.14C17.96 0 15.23-.01 12 0 5.37 0 0 5.37 0 12s5.37 12 12 12c6.92 0 11.5-4.87 11.5-12 0-.81-.09-1.42-.19-2H12z"/>
           </svg>
           Googleではじめる
         </Button>
-        <Link href="/home" className="w-full">
-          <Button variant="ghost" size="sm" className="w-full">
-            プレビューを見る（開発用）
-          </Button>
-        </Link>
-        <p className="text-center text-[11px] leading-5 text-muted">
-          登録すると利用規約・プライバシーポリシーに同意したことになります
-        </p>
-      </section>
-    </main>
+
+        <div className="flex items-center gap-3">
+          <div className="flex-1 border-t border-border" />
+          <span className="text-xs text-muted">または</span>
+          <div className="flex-1 border-t border-border" />
+        </div>
+
+        {/* Magic Link */}
+        {magicSent ? (
+          <div className="flex flex-col items-center gap-2 rounded-xl bg-muted/20 p-4 text-center">
+            <CheckCircle2 className="size-8 text-green-500" />
+            <p className="text-sm font-medium">メールを送りました</p>
+            <p className="text-xs text-muted">{email} に届いたリンクをクリックしてログインできます</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-2">
+              <input
+                type="email"
+                placeholder="メールアドレス"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleMagicLink()}
+                className="flex-1 rounded-xl border border-border bg-transparent px-4 py-2.5 text-sm placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent"
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleMagicLink}
+                disabled={magicLoading || !email.trim()}
+                className="shrink-0"
+              >
+                <Mail className="size-4" />
+              </Button>
+            </div>
+            {magicError && <p className="text-xs text-red-500">{magicError}</p>}
+            <p className="text-center text-xs text-muted">メールでログインリンクを受け取る</p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
