@@ -55,7 +55,7 @@ export default async function AppLayout({
             <Camera className="size-6" strokeWidth={1.8} />
           </Link>
           <Link
-            href="/invite"
+            href="/profile"
             className="flex flex-col items-center gap-0.5 p-2 text-muted transition-colors hover:text-foreground"
           >
             <UserRound className="size-5" strokeWidth={1.6} />
