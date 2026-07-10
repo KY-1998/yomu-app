@@ -1,293 +1,314 @@
-// プロフィールページ（インスタ風・初回登録 + 後から編集）
+// ãã­ãã£ã¼ã«ãã¼ã¸
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { CATEGORIES, jstToday, type CategoryKey } from "@/lib/utils";
+import { CATEGORIES } from "@/lib/utils";
 
-type Profile = { display_name: string; username: string };
-type PostItem = { category: string; image_url: string };
-type Post = { id: string; post_date: string; post_items: PostItem[] };
+const CELL_GRADIENTS: Record<string, string> = {
+  face: "linear-gradient(160deg, #D9BFB0, #C9A28F)",
+  scene: "linear-gradient(160deg, #A8B5A0, #96A48D)",
+  weather: "linear-gradient(160deg, #AEBFC9, #9DB0BD)",
+  food: "linear-gradient(160deg, #D6B98C, #C7A76F)",
+};
+
+type PostSummary = {
+  id: string;
+  post_date: string;
+  categories: string[];
+  signedUrls: Record<string, string>;
+};
+
+type Profile = {
+  username: string;
+  display_name: string | null;
+  bio: string | null;
+  avatar_url: string | null;
+};
 
 export default function ProfilePage() {
+  const router = useRouter();
   const supabase = createClient();
+
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [posts, setPosts] = useState<PostSummary[]>([]);
   const [friendCount, setFriendCount] = useState(0);
-  const [isEditing, setIsEditing] = useState(false);
-  const [displayName, setDisplayName] = useState("");
-  const [username, setUsername] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [avatarSignedUrl, setAvatarSignedUrl] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { router.push("/login"); return; }
 
-      const { data: p } = await supabase
+      // ãã­ãã£ã¼ã«åå¾
+      const { data: prof } = await supabase
         .from("profiles")
-        .select("display_name, username")
+        .select("username, display_name, bio, avatar_url")
         .eq("id", user.id)
         .maybeSingle();
+      setProfile(prof);
 
-      if (p) {
-        setProfile(p);
-        setDisplayName(p.display_name ?? "");
-        setUsername(p.username ?? "");
-      } else {
-        // 初回：編集モードで開く
-        setIsEditing(true);
+      // ã¢ãã¿ã¼ signed URL
+      if (prof?.avatar_url) {
+        const { data: avu } = await supabase.storage
+          .from("avatars")
+          .createSignedUrl(prof.avatar_url, 3600);
+        if (avu?.signedUrl) setAvatarSignedUrl(avu.signedUrl);
       }
 
-      const { data: recentPosts } = await supabase
+      // æç¨¿åå¾ï¼ææ°12ä»¶ï¼
+      const { data: rawPosts } = await supabase
         .from("posts")
         .select("id, post_date, post_items(category, image_url)")
         .eq("user_id", user.id)
         .order("post_date", { ascending: false })
-        .limit(6);
-      if (recentPosts) setPosts(recentPosts as Post[]);
+        .limit(12);
 
+      if (rawPosts) {
+        const enriched: PostSummary[] = await Promise.all(
+          rawPosts.map(async (p: any) => {
+            const signedUrls: Record<string, string> = {};
+            await Promise.all(
+              (p.post_items || []).map(async (item: any) => {
+                if (item.image_url && !item.image_url.startsWith("http")) {
+                  const { data } = await supabase.storage
+                    .from("post-images")
+                    .createSignedUrl(item.image_url, 3600);
+                  if (data?.signedUrl) signedUrls[item.category] = data.signedUrl;
+                } else if (item.image_url) {
+                  signedUrls[item.category] = item.image_url;
+                }
+              })
+            );
+            return {
+              id: p.id,
+              post_date: p.post_date,
+              categories: (p.post_items || []).map((i: any) => i.category),
+              signedUrls,
+            };
+          })
+        );
+        setPosts(enriched);
+      }
+
+      // åéæ°
       const { count } = await supabase
         .from("friendships")
         .select("*", { count: "exact", head: true })
-        .or(`user_a.eq.${user.id},user_b.eq.${user.id}`)
+        .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`)
         .eq("status", "accepted");
       setFriendCount(count ?? 0);
 
       setLoading(false);
     }
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleSave() {
-    setSaving(true);
-    setError(null);
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("ログインが必要です");
-      if (!displayName.trim()) throw new Error("表示名を入力してください");
-      if (!/^[a-zA-Z0-9_]{1,30}$/.test(username))
-        throw new Error("ユーザー名は英数字と_のみ（1〜30文字）");
-
-      const { error: e } = await supabase.from("profiles").upsert({
-        id: user.id,
-        display_name: displayName.trim(),
-        username: username.trim().toLowerCase(),
-        updated_at: new Date().toISOString(),
-      });
-      if (e) throw e;
-
-      // プロフィール設定完了フラグをメタデータに保存
-      await supabase.auth.updateUser({ data: { profile_complete: true } });
-
-      setProfile({
-        display_name: displayName.trim(),
-        username: username.trim().toLowerCase(),
-      });
-      setIsEditing(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "保存に失敗しました");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-sm text-muted-foreground">読み込み中…</p>
-      </div>
-    );
-  }
-
-  // ── 編集モード ──────────────────────────────
-  if (isEditing) {
-    return (
-      <div className="flex flex-col max-w-sm mx-auto px-4 py-6 gap-6">
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => profile && setIsEditing(false)}
-            className="text-sm text-muted-foreground w-16"
-          >
-            {profile ? "キャンセル" : ""}
-          </button>
-          <h1 className="text-base font-semibold">
-            {profile ? "プロフィールを編集" : "プロフィールを設定"}
-          </h1>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="text-sm font-semibold text-accent disabled:opacity-40 w-16 text-right"
-          >
-            {saving ? "…" : "保存"}
-          </button>
-        </div>
-
-        {/* アバタープレビュー */}
-        <div className="flex justify-center">
-          <div className="w-24 h-24 rounded-full bg-accent/20 flex items-center justify-center text-4xl font-medium text-accent">
-            {displayName.charAt(0).toUpperCase() || "?"}
-          </div>
-        </div>
-
-        {/* フォーム */}
-        <div className="flex flex-col gap-5">
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-              表示名
-            </label>
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="例: ゆーた"
-              maxLength={30}
-              className="border-b border-input pb-2 text-base outline-none focus:border-foreground bg-transparent"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-              ユーザー名
-            </label>
-            <div className="flex items-center gap-1 border-b border-input pb-2 focus-within:border-foreground">
-              <span className="text-muted-foreground">@</span>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) =>
-                  setUsername(
-                    e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "")
-                  )
-                }
-                placeholder="yuta_1998"
-                maxLength={30}
-                className="flex-1 text-base outline-none bg-transparent"
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              英数字とアンダースコア（_）のみ
-            </p>
-          </div>
-        </div>
-
-        {error && <p className="text-sm text-red-500">{error}</p>}
-      </div>
-    );
-  }
-
-  // ── 表示モード（インスタ風） ────────────────────
-  const initials = profile?.display_name?.charAt(0)?.toUpperCase() ?? "?";
+  const displayName = profile?.display_name || profile?.username || "â";
+  const username = profile?.username || "";
+  const initials = displayName.slice(0, 1).toUpperCase();
 
   return (
-    <div className="flex flex-col pb-4">
-      {/* プロフィールヘッダー */}
-      <div className="flex flex-col items-center gap-3 px-6 pt-6 pb-4">
-        <div className="w-24 h-24 rounded-full bg-accent/20 flex items-center justify-center text-4xl font-semibold text-accent">
-          {initials}
-        </div>
-        <div className="text-center">
-          <p className="text-lg font-semibold">{profile?.display_name}</p>
-          <p className="text-sm text-muted-foreground">@{profile?.username}</p>
+    <div style={{ padding: "56px 0 0", minHeight: "100%", display: "flex", flexDirection: "column" }}>
+      {/* ãã­ãã£ã¼ã«ãããã¼ */}
+      <div style={{ padding: "28px 24px 24px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+        {/* ã¢ãã¿ã¼ */}
+        <div style={{
+          width: 72,
+          height: 72,
+          borderRadius: "50%",
+          background: avatarSignedUrl ? "transparent" : "linear-gradient(160deg, #D9BFB0, #C9A28F)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+          flexShrink: 0,
+        }}>
+          {avatarSignedUrl ? (
+            <img src={avatarSignedUrl} alt={displayName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ) : (
+            <span style={{ fontSize: 28, fontWeight: 500, color: "#FAF7F2", letterSpacing: "0.04em" }}>
+              {initials}
+            </span>
+          )}
         </div>
 
-        {/* 統計 */}
-        <div className="flex gap-10 mt-1">
-          <div className="flex flex-col items-center">
-            <span className="text-base font-semibold">{posts.length > 0 ? posts.length + "+" : 0}</span>
-            <span className="text-xs text-muted-foreground">投稿</span>
+        {/* åå */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+          <span style={{ fontSize: 16, fontWeight: 500, letterSpacing: "0.12em", color: "#2B2B28" }}>
+            {displayName.toUpperCase()}
+          </span>
+          {username && (
+            <span style={{ fontSize: 10, color: "#B4AA98", letterSpacing: "0.12em" }}>
+              @{username}
+            </span>
+          )}
+        </div>
+
+        {/* çµ±è¨ */}
+        <div style={{ display: "flex", gap: 32, marginTop: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+            <span style={{ fontSize: 16, fontWeight: 500, color: "#2B2B28", letterSpacing: "0.06em" }}>
+              {posts.length > 0 ? `${posts.length}+` : "0"}
+            </span>
+            <span style={{ fontSize: 9, color: "#A79D8C", letterSpacing: "0.16em" }}>æç¨¿</span>
           </div>
-          <div className="flex flex-col items-center">
-            <span className="text-base font-semibold">{friendCount}</span>
-            <span className="text-xs text-muted-foreground">友達</span>
+          <div style={{ width: 1, background: "#EAE2D2" }} />
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+            <span style={{ fontSize: 16, fontWeight: 500, color: "#2B2B28", letterSpacing: "0.06em" }}>
+              {friendCount}
+            </span>
+            <span style={{ fontSize: 9, color: "#A79D8C", letterSpacing: "0.16em" }}>åé</span>
           </div>
         </div>
 
-        {/* 編集ボタン */}
-        <button
-          onClick={() => setIsEditing(true)}
-          className="w-full max-w-xs border border-input rounded-lg py-1.5 text-sm font-medium hover:bg-muted transition-colors"
+        {/* ç·¨éãã¿ã³ */}
+        <Link
+          href="/profile/edit"
+          style={{
+            display: "block",
+            width: "100%",
+            border: "1px solid #DDD3C0",
+            borderRadius: 9999,
+            padding: "10px 0",
+            textAlign: "center",
+            fontSize: 12,
+            fontWeight: 400,
+            color: "#8A8375",
+            letterSpacing: "0.14em",
+            textDecoration: "none",
+            marginTop: 4,
+          }}
         >
-          プロフィールを編集
-        </button>
+          ãã­ãã£ã¼ã«ãç·¨é
+        </Link>
       </div>
 
-      {/* この投稿 */}
-      <div className="border-t">
-        <div className="flex items-center justify-between px-4 py-3">
-          <p className="text-sm font-semibold">この投稿</p>
+      {/* åºåãç· */}
+      <div style={{ height: 1, background: "#EAE2D2", margin: "0 24px" }} />
+
+      {/* ãã®æç¨¿ã»ã¯ã·ã§ã³ */}
+      <div style={{ padding: "20px 24px 0", display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: "0.14em", color: "#2B2B28" }}>
+            ãã®æç¨¿
+          </span>
           <Link
             href="/history"
-            className="text-xs text-muted-foreground flex items-center gap-0.5"
+            style={{ fontSize: 10, color: "#A79D8C", letterSpacing: "0.12em", textDecoration: "none" }}
           >
-            全て見る <ChevronRight className="w-3 h-3" />
+            å¨ã¦è¦ã âº
           </Link>
         </div>
-        {posts.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-10">
-            まだ投稿がありません
-          </p>
+
+        {loading ? (
+          <div style={{ display: "flex", justifyContent: "center", padding: "32px 0" }}>
+            <span style={{ fontSize: 10, color: "#A79D8C", letterSpacing: "0.14em" }}>èª­ã¿è¾¼ã¿ä¸­â¦</span>
+          </div>
+        ) : posts.length === 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "40px 0", gap: 12 }}>
+            <span style={{ fontSize: 11, color: "#B4AA98", letterSpacing: "0.1em" }}>ã¾ã æç¨¿ãããã¾ãã</span>
+            <Link
+              href="/post"
+              style={{
+                border: "1px solid #E8663C",
+                color: "#E8663C",
+                borderRadius: 9999,
+                padding: "10px 24px",
+                fontSize: 11,
+                letterSpacing: "0.16em",
+                textDecoration: "none",
+              }}
+            >
+              æåã®4ã³ããå±ãã
+            </Link>
+          </div>
         ) : (
-          <div className="grid grid-cols-3 gap-0.5">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
             {posts.map((post) => {
-              const byCategory = Object.fromEntries(
-                post.post_items.map((i) => [i.category, i])
-              );
-              // 代表画像は face → scene → weather → food の優先順
-              const rep =
-                byCategory["face"] ||
-                byCategory["scene"] ||
-                byCategory["weather"] ||
-                byCategory["food"];
+              // æåã®åçãããã«ãã´ãªãæ¢ãï¼ãµã ãã¤ã«ç¨ï¼
+              const mainCat = CATEGORIES.find(c => post.signedUrls[c.key]);
+              const mainUrl = mainCat ? post.signedUrls[mainCat.key] : null;
+
               return (
-                <div
+                <button
                   key={post.id}
-                  className="aspect-square overflow-hidden bg-muted"
+                  onClick={() => router.push(`/post?date=${post.post_date}`)}
+                  style={{
+                    aspectRatio: "1",
+                    padding: 0,
+                    border: "none",
+                    cursor: "pointer",
+                    borderRadius: 3,
+                    overflow: "hidden",
+                    background: "transparent",
+                    position: "relative",
+                  }}
                 >
-                  {/* 2×2ミニグリッド */}
-                  <div className="grid grid-cols-2 gap-px w-full h-full">
-                    {CATEGORIES.map((cat) => {
-                      const item = byCategory[cat.key];
+                  {/* 2x2 ããã°ãªãã */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, width: "100%", height: "100%" }}>
+                    {CATEGORIES.map(cat => {
+                      const url = post.signedUrls[cat.key];
+                      const hasCategory = post.categories.includes(cat.key);
                       return (
                         <div
                           key={cat.key}
-                          className="overflow-hidden bg-muted-foreground/10"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            background: hasCategory
+                              ? CELL_GRADIENTS[cat.key]
+                              : "#EFEADF",
+                            position: "relative",
+                            overflow: "hidden",
+                          }}
                         >
-                          {item?.image_url && (
+                          {url && (
                             <img
-                              src={item.image_url}
+                              src={url}
                               alt={cat.label}
-                              className="w-full h-full object-cover"
+                              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                             />
                           )}
                         </div>
                       );
                     })}
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
         )}
       </div>
 
-      {/* 友達を招待 */}
-      <div className="border-t mt-4">
+      {/* åºåãç· */}
+      <div style={{ height: 1, background: "#EAE2D2", margin: "20px 24px 0" }} />
+
+      {/* ãã®ä»ã¡ãã¥ã¼ */}
+      <div style={{ padding: "0 24px" }}>
         <Link
           href="/invite"
-          className="flex items-center justify-between px-4 py-4 hover:bg-muted transition-colors"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "16px 0",
+            textDecoration: "none",
+            color: "#2B2B28",
+          }}
         >
-          <div className="flex items-center gap-2 text-sm">
-            <span>👥</span>
-            <span>友達を招待する</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+              <circle cx="7" cy="7" r="3" stroke="#A79D8C" strokeWidth="1.2" />
+              <path d="M1 17c0-3 2.5-5 6-5s6 2 6 5" stroke="#A79D8C" strokeWidth="1.2" strokeLinecap="round" />
+              <path d="M15 7v6M12 10h6" stroke="#E8663C" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
+            <span style={{ fontSize: 12, letterSpacing: "0.1em", color: "#8A8375" }}>åéãæå¾ãã</span>
           </div>
-          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+          <span style={{ color: "#C2B9A8", fontSize: 14 }}>âº</span>
         </Link>
       </div>
     </div>
