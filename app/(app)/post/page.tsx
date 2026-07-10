@@ -1,66 +1,37 @@
-// 投稿画面のスケルトン
-// 2×2グリッド（顔・景色・天気・ご飯）。各セルタップでカメラ起動。部分投稿OK。
+// 投稿画面 - Supabase連携済み
 "use client";
-
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Plus, RotateCcw } from "lucide-react";
 import imageCompression from "browser-image-compression";
 import { CATEGORIES, cn, jstToday, type CategoryKey } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 
-type CellState = {
-  previewUrl: string | null; // ObjectURL（アップロード前プレビュー）
-  file: File | null;
-  caption: string;
-};
-
-const emptyCell = (): CellState => ({
-  previewUrl: null,
-  file: null,
-  caption: "",
-});
+type CellState = { previewUrl: string | null; file: File | null; caption: string; };
+const emptyCell = (): CellState => ({ previewUrl: null, file: null, caption: "" });
 
 export default function PostPage() {
+  const supabase = createClient();
+  const router = useRouter();
   const [cells, setCells] = useState<Record<CategoryKey, CellState>>({
-    face: emptyCell(),
-    scene: emptyCell(),
-    weather: emptyCell(),
-    food: emptyCell(),
+    face: emptyCell(), scene: emptyCell(), weather: emptyCell(), food: emptyCell(),
   });
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const inputRefs = useRef<Partial<Record<CategoryKey, HTMLInputElement | null>>>({});
-
   const filledCount = CATEGORIES.filter((c) => cells[c.key].previewUrl).length;
 
-  // 写真選択 → 圧縮 → プレビュー表示
-  async function handleFileChange(
-    key: CategoryKey,
-    e: React.ChangeEvent<HTMLInputElement>
-  ) {
+  async function handleFileChange(key: CategoryKey, e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // フィルム風SNSなので長辺1280px / 300KB程度まで圧縮（通信量にやさしく）
-    const compressed = await imageCompression(file, {
-      maxWidthOrHeight: 1280,
-      maxSizeMB: 0.3,
-      useWebWorker: true,
-    });
-
+    const compressed = await imageCompression(file, { maxWidthOrHeight: 1280, maxSizeMB: 0.3, useWebWorker: true });
     setCells((prev) => {
-      // 古いObjectURLを解放
       if (prev[key].previewUrl) URL.revokeObjectURL(prev[key].previewUrl);
-      return {
-        ...prev,
-        [key]: {
-          ...prev[key],
-          file: compressed,
-          previewUrl: URL.createObjectURL(compressed),
-        },
-      };
+      return { ...prev, [key]: { file: compressed, previewUrl: URL.createObjectURL(compressed), caption: prev[key].caption } };
     });
-    e.target.value = ""; // 同じファイルを再選択できるように
+    e.target.value = "";
   }
 
   function clearCell(key: CategoryKey) {
@@ -71,96 +42,79 @@ export default function PostPage() {
   }
 
   async function handleSubmit() {
-    setSubmitting(true);
-    // TODO: Supabase Storage へアップロード → posts / post_items を upsert
-    // パス規約: post-images/{user_id}/{post_date}/{category}.jpg
-    await new Promise((r) => setTimeout(r, 800)); // 仮の待ち
-    setSubmitting(false);
-    alert("（仮）投稿しました！Supabase接続後に実装します");
+    if (filledCount === 0 || submitting) return;
+    setSubmitting(true); setError(null);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { router.push("/"); return; }
+      const today = jstToday();
+      const { data: post, error: postErr } = await supabase
+        .from("posts")
+        .upsert({ user_id: user.id, post_date: today, note: note.trim() }, { onConflict: "user_id,post_date" })
+        .select("id").single();
+      if (postErr || !post) throw new Error(postErr?.message ?? "投稿に失敗しました");
+      const filled = CATEGORIES.filter((c) => cells[c.key].file);
+      await Promise.all(filled.map(async (c) => {
+        const key = c.key as CategoryKey;
+        const path = `${user.id}/${today}/${key}.jpg`;
+        const { error: upErr } = await supabase.storage.from("post-images")
+          .upload(path, cells[key].file!, { upsert: true, contentType: "image/jpeg" });
+        if (upErr) throw new Error(upErr.message);
+        const { error: itemErr } = await supabase.from("post_items")
+          .upsert({ post_id: post.id, category: key, image_url: path, caption: cells[key].caption }, { onConflict: "post_id,category" });
+        if (itemErr) throw new Error(itemErr.message);
+      }));
+      router.push("/home");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "エラーが発生しました");
+      setSubmitting(false);
+    }
   }
 
   return (
-    <div className="px-5 pt-6">
-      <div className="mb-6">
-        <h1 className="font-heading text-2xl">きょうの4枚</h1>
-        <p className="mt-1 font-latin text-[10px] tracking-[0.15em] text-muted">
-          {jstToday()} ・ 撮り直しは今日中なら何度でも
-        </p>
-      </div>
-
-      {/* 2×2 撮影グリッド */}
-      <div className="grid grid-cols-2 gap-2">
-        {CATEGORIES.map((c) => {
-          const cell = cells[c.key];
-          const filled = !!cell.previewUrl;
+    <div className="flex flex-col gap-6 p-4">
+      <div className="grid grid-cols-2 gap-3">
+        {CATEGORIES.map((cat) => {
+          const cell = cells[cat.key];
           return (
-            <div key={c.key} className="flex flex-col gap-1.5">
-              <button
-                type="button"
-                onClick={() => inputRefs.current[c.key]?.click()}
-                className={cn(
-                  "relative aspect-square w-full overflow-hidden rounded-xl transition-all active:scale-[0.98]",
-                  filled
-                    ? "shadow-sm"
-                    : "border border-dashed border-muted-soft/50 bg-card hover:border-muted-soft"
-                )}
-              >
-                {filled ? (
+            <div key={cat.key} className="flex flex-col gap-1.5">
+              <div className="relative aspect-square overflow-hidden rounded-2xl bg-muted/50">
+                {cell.previewUrl ? (
                   <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={cell.previewUrl!}
-                      alt={c.label}
-                      className="film-photo absolute inset-0 h-full w-full object-cover"
-                    />
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        clearCell(c.key);
-                      }}
-                      className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-full bg-black/45 text-white"
-                      aria-label={`${c.label}を撮り直す`}
+                    <img src={cell.previewUrl} alt={cat.label} className="size-full object-cover" />
+                    <button
+                      onClick={() => clearCell(cat.key)}
+                      className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm"
                     >
-                      <RotateCcw className="size-3.5" strokeWidth={2} />
-                    </span>
+                      <RotateCcw className="size-3.5" />
+                    </button>
                   </>
                 ) : (
-                  // 空きセル: 点線＋淡いアイコン（部分投稿OKの表現）
-                  <span className="flex h-full flex-col items-center justify-center gap-2">
-                    <span className="text-2xl opacity-30">{c.emoji}</span>
-                    <Plus className="size-4 text-muted/50" strokeWidth={1.6} />
-                  </span>
+                  <button
+                    onClick={() => inputRefs.current[cat.key]?.click()}
+                    className="flex size-full flex-col items-center justify-center gap-2 text-muted transition-colors hover:text-foreground"
+                  >
+                    <span className="text-3xl">{cat.emoji}</span>
+                    <span className="text-xs">{cat.label}</span>
+                    <Plus className="size-4" />
+                  </button>
                 )}
-              </button>
-
-              {/* カメラ起動用 input（スマホでは撮影が立ち上がる） */}
-              <input
-                ref={(el) => {
-                  inputRefs.current[c.key] = el;
-                }}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={(e) => handleFileChange(c.key, e)}
-              />
-
-              {/* キャプション（撮影済みのときだけ） */}
-              {filled && (
+                <input
+                  ref={(el) => { inputRefs.current[cat.key] = el; }}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => handleFileChange(cat.key, e)}
+                />
+              </div>
+              {cell.previewUrl && (
                 <input
                   type="text"
+                  placeholder={cat.hint}
                   value={cell.caption}
-                  maxLength={140}
-                  placeholder={c.hint}
-                  onChange={(e) =>
-                    setCells((prev) => ({
-                      ...prev,
-                      [c.key]: { ...prev[c.key], caption: e.target.value },
-                    }))
-                  }
-                  className="w-full rounded-none border-b border-muted-soft bg-transparent px-1 py-2 text-xs outline-none placeholder:text-muted/60 focus:border-foreground/40"
+                  onChange={(e) => setCells((prev) => ({ ...prev, [cat.key]: { ...prev[cat.key], caption: e.target.value } }))}
+                  className="rounded-lg border border-border bg-transparent px-3 py-1.5 text-xs placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent"
                 />
               )}
             </div>
@@ -168,34 +122,23 @@ export default function PostPage() {
         })}
       </div>
 
-      {/* ひとことノート */}
       <textarea
+        placeholder="今日はどんな日でしたか？（任意）"
         value={note}
         onChange={(e) => setNote(e.target.value)}
-        maxLength={500}
-        rows={2}
-        placeholder="きょうのひとこと（任意）"
-        className="mt-5 w-full resize-none rounded-none border-b border-muted-soft bg-transparent px-1 py-3 text-sm leading-6 outline-none placeholder:text-muted/60 focus:border-foreground/40"
+        rows={3}
+        className="resize-none rounded-xl border border-border bg-transparent px-4 py-3 text-sm placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent"
       />
 
-      {/* 投稿ボタン */}
-      <div className="mt-6">
-        <Button
-          size="lg"
-          className="w-full rounded-full"
-          disabled={filledCount === 0 || submitting}
-          onClick={handleSubmit}
-        >
-          {submitting
-            ? "とどけています…"
-            : filledCount === 0
-              ? "まず1枚撮ってみよう"
-              : `${filledCount}枚でとどける`}
-        </Button>
-        <p className="mt-3 text-center text-[10px] leading-5 tracking-[0.05em] text-muted">
-          1枚だけでもOK。投稿すると友達の今日が見えるようになります。
-        </p>
-      </div>
+      {error && <p className="text-center text-sm text-red-500">{error}</p>}
+
+      <Button
+        onClick={handleSubmit}
+        disabled={filledCount === 0 || submitting}
+        className="w-full"
+      >
+        {submitting ? "投稿中..." : `投稿する（${filledCount}/4枚）`}
+      </Button>
     </div>
   );
 }
