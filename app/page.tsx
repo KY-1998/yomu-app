@@ -1,9 +1,22 @@
+"use client";
 // ランディングページ（ログイン前）
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { CATEGORIES } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 
 export default function LandingPage() {
+  const supabase = createClient();
+
+  async function handleGoogleLogin() {
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+  }
+
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col px-7 pb-12 pt-16">
       {/* ロゴ */}
@@ -43,8 +56,7 @@ export default function LandingPage() {
 
       {/* CTA */}
       <section className="mt-auto flex flex-col gap-3 pt-14">
-        <Button size="lg" className="w-full">
-          {/* TODO: Supabase Auth の signInWithOAuth('google') に接続 */}
+        <Button size="lg" className="w-full" onClick={handleGoogleLogin}>
           <svg viewBox="0 0 24 24" className="size-4 fill-current" aria-hidden>
             <path d="M21.35 11.1H12v2.9h5.35c-.5 2.5-2.6 4.3-5.35 4.3a5.8 5.8 0 1 1 0-11.6c1.5 0 2.8.55 3.8 1.45l2.15-2.15A8.7 8.7 0 1 0 12 20.7c5 0 8.7-3.5 8.7-8.7 0-.3-.02-.6-.05-.9z" />
           </svg>
