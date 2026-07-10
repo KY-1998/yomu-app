@@ -2,7 +2,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import { Home, Camera, UserRound, Clock } from "lucide-react";
+import { Home, Camera, UserRound } from "lucide-react";
 
 export default async function AppLayout({
   children,
@@ -39,13 +39,6 @@ export default async function AppLayout({
           >
             <Home className="size-5" strokeWidth={1.6} />
             <span className="text-[10px]">きょう</span>
-          </Link>
-          <Link
-            href="/history"
-            className="flex flex-col items-center gap-0.5 p-2 text-muted transition-colors hover:text-foreground"
-          >
-            <Clock className="size-5" strokeWidth={1.6} />
-            <span className="text-[10px]">きろく</span>
           </Link>
           <Link
             href="/post"
