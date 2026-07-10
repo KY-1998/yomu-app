@@ -230,8 +230,6 @@ export default function ProfilePage() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
             {posts.map((post) => {
               // æåã®åçãããã«ãã´ãªãæ¢ãï¼ãµã ãã¤ã«ç¨ï¼
-              const mainCat = CATEGORIES.find(c => post.signedUrls[c.key]);
-              const mainUrl = mainCat ? post.signedUrls[mainCat.key] : null;
 
               return (
                 <button
