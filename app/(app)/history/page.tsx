@@ -1,132 +1,275 @@
-// 過去の投稿一覧
+// ãããç»é¢ - æå¥ã«ã¬ã³ãã¼è¡¨ç¤º
 "use client";
-import { useEffect, useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
+import { CATEGORIES } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
-import { CATEGORIES, jstToday, type CategoryKey } from "@/lib/utils";
 
-type PostItem = { category: string; image_url: string; caption: string };
-type Post = {
-  id: string;
-  post_date: string;
-  note: string | null;
-  post_items: PostItem[];
+const CELL_GRADIENTS: Record<string, string> = {
+  face: "linear-gradient(160deg, #D9BFB0, #C9A28F)",
+  scene: "linear-gradient(160deg, #A8B5A0, #96A48D)",
+  weather: "linear-gradient(160deg, #AEBFC9, #9DB0BD)",
+  food: "linear-gradient(160deg, #D6B98C, #C7A76F)",
 };
 
+type DayPost = { post_id: string; categories: string[] };
+
+function toJSTDate() {
+  return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
+}
+function padZ(n: number) { return String(n).padStart(2, "0"); }
+function makeDateStr(y: number, m: number, d: number) {
+  return `${y}-${padZ(m + 1)}-${padZ(d)}`;
+}
+
+const DAY_HEADERS = ["S", "M", "T", "W", "T", "F", "S"];
+
 export default function HistoryPage() {
-  const supabase = createClient();
   const router = useRouter();
-  const [posts, setPosts] = useState<Post[]>([]);
+  const jstNow = toJSTDate();
+  const todayStr = makeDateStr(jstNow.getFullYear(), jstNow.getMonth(), jstNow.getDate());
+
+  const [year, setYear] = useState(jstNow.getFullYear());
+  const [month, setMonth] = useState(jstNow.getMonth()); // 0-indexed
+  const [postsByDate, setPostsByDate] = useState<Record<string, DayPost>>({});
+  const [streak, setStreak] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function load() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+  const loadMonth = useCallback(async (y: number, m: number) => {
+    setLoading(true);
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setLoading(false); return; }
 
-      const { data } = await supabase
-        .from("posts")
-        .select("id, post_date, note, post_items(category, image_url, caption)")
-        .eq("user_id", user.id)
-        .lt("post_date", jstToday())
-        .order("post_date", { ascending: false })
-        .limit(60);
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    const start = makeDateStr(y, m, 1);
+    const end = makeDateStr(y, m, lastDay);
 
-      if (data) setPosts(data as Post[]);
-      setLoading(false);
+    const { data: posts } = await supabase
+      .from("posts")
+      .select("id, post_date, post_items(category)")
+      .eq("user_id", user.id)
+      .gte("post_date", start)
+      .lte("post_date", end);
+
+    const map: Record<string, DayPost> = {};
+    if (posts) {
+      posts.forEach((p: any) => {
+        map[p.post_date] = {
+          post_id: p.id,
+          categories: (p.post_items || []).map((i: any) => i.category),
+        };
+      });
     }
-    load();
-  }, []);
+    setPostsByDate(map);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-muted-foreground text-sm">読み込み中…</p>
-      </div>
-    );
-  }
+    // Streak: only calculate for current month view
+    const nowY = jstNow.getFullYear();
+    const nowM = jstNow.getMonth();
+    if (y === nowY && m === nowM) {
+      // Load last 90 days
+      const past90 = new Date(jstNow);
+      past90.setDate(past90.getDate() - 90);
+      const streakStart = makeDateStr(past90.getFullYear(), past90.getMonth(), past90.getDate());
+
+      const { data: allPosts } = await supabase
+        .from("posts")
+        .select("post_date")
+        .eq("user_id", user.id)
+        .gte("post_date", streakStart)
+        .lte("post_date", todayStr);
+
+      if (allPosts) {
+        const dateSet = new Set(allPosts.map((p: any) => p.post_date));
+        let s = 0;
+        const d = new Date(jstNow);
+        while (s < 90) {
+          const ds = makeDateStr(d.getFullYear(), d.getMonth(), d.getDate());
+          if (dateSet.has(ds)) {
+            s++;
+            d.setDate(d.getDate() - 1);
+          } else break;
+        }
+        setStreak(s);
+      }
+    }
+
+    setLoading(false);
+  }, [todayStr]);
+
+  useEffect(() => {
+    loadMonth(year, month);
+  }, [year, month, loadMonth]);
+
+  const prevMonth = () => {
+    if (month === 0) { setYear(y => y - 1); setMonth(11); }
+    else setMonth(m => m - 1);
+  };
+  const nextMonth = () => {
+    if (month === 11) { setYear(y => y + 1); setMonth(0); }
+    else setMonth(m => m + 1);
+  };
+  const isCurrentMonth = year === jstNow.getFullYear() && month === jstNow.getMonth();
+
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstWeekday = new Date(year, month, 1).getDay();
 
   return (
-    <div className="flex flex-col">
-      {/* ヘッダー */}
-      <div className="sticky top-[64px] bg-background/80 backdrop-blur z-10 flex items-center gap-2 px-4 py-3 border-b">
-        <button
-          onClick={() => router.back()}
-          className="p-1 -ml-1 rounded-full hover:bg-muted"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
-        <h1 className="text-base font-semibold">過去の投稿</h1>
-        <span className="ml-auto text-xs text-muted-foreground">{posts.length}件</span>
+    <div style={{ padding: "84px 24px 32px", minHeight: "100%", display: "flex", flexDirection: "column", gap: 32 }}>
+      {/* ãã¹ãããã */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <span style={{ fontSize: 40, fontWeight: 500, letterSpacing: "0.06em", lineHeight: 1.1 }}>
+          {month + 1}æã®<br />ããã
+        </span>
+        {streak > 0 ? (
+          <span style={{ fontSize: 11, letterSpacing: "0.08em", color: "#A79D8C" }}>
+            <span style={{ color: "#E8663C", fontWeight: 500 }}>{streak}æ¥</span>é£ç¶æç¨¿ä¸­
+          </span>
+        ) : (
+          <span style={{ fontSize: 11, letterSpacing: "0.08em", color: "#A79D8C" }}>
+            {loading ? "èª­ã¿è¾¼ã¿ä¸­â¦" : "æç¨¿ããæ¥ãã«ã¬ã³ãã¼ã«æ®ãã¾ã"}
+          </span>
+        )}
       </div>
 
-      {posts.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
-          <p className="text-sm">まだ記録がありません</p>
-          <p className="text-xs">毎日カメラで投稿すると履歴が貯まります</p>
+      {/* æãã */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <button
+          onClick={prevMonth}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: "#A79D8C",
+            fontSize: 20,
+            padding: "0 12px",
+            lineHeight: 1,
+            fontFamily: "var(--font-instrument), sans-serif",
+          }}
+        >
+          â¹
+        </button>
+        <span style={{
+          fontSize: 12,
+          fontWeight: 400,
+          letterSpacing: "0.16em",
+          color: "#2B2B28",
+          fontFamily: "var(--font-instrument), sans-serif",
+        }}>
+          {year}.{padZ(month + 1)}
+        </span>
+        <button
+          onClick={nextMonth}
+          disabled={isCurrentMonth}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: isCurrentMonth ? "default" : "pointer",
+            color: isCurrentMonth ? "#DDD3C0" : "#A79D8C",
+            fontSize: 20,
+            padding: "0 12px",
+            lineHeight: 1,
+            fontFamily: "var(--font-instrument), sans-serif",
+          }}
+        >
+          âº
+        </button>
+      </div>
+
+      {/* ã«ã¬ã³ãã¼ */}
+      <div>
+        {/* ææ¥ãããã¼ */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 8 }}>
+          {DAY_HEADERS.map((d, i) => (
+            <span
+              key={i}
+              style={{
+                textAlign: "center",
+                fontSize: 8,
+                fontFamily: "var(--font-instrument), sans-serif",
+                letterSpacing: "0.1em",
+                color: "#C2B9A8",
+              }}
+            >
+              {d}
+            </span>
+          ))}
         </div>
-      ) : (
-        <div className="divide-y">
-          {posts.map((post) => {
-            const byCategory = Object.fromEntries(
-              post.post_items.map((i) => [i.category, i])
-            );
-            const d = new Date(post.post_date + "T00:00:00+09:00");
-            const dateStr = new Intl.DateTimeFormat("ja-JP", {
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-              weekday: "short",
-            }).format(d);
+
+        {/* æ¥ä»ã»ã« */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
+          {/* æåãã®ç©ºç½ */}
+          {Array.from({ length: firstWeekday }).map((_, i) => (
+            <div key={`pad-${i}`} style={{ aspectRatio: "1" }} />
+          ))}
+
+          {Array.from({ length: daysInMonth }).map((_, i) => {
+            const day = i + 1;
+            const ds = makeDateStr(year, month, day);
+            const post = postsByDate[ds];
+            const isToday = ds === todayStr;
+            const isFuture = ds > todayStr;
 
             return (
-              <div key={post.id} className="p-4">
-                <p className="text-xs font-medium text-muted-foreground mb-2">
-                  {dateStr}
-                </p>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {CATEGORIES.map((cat) => {
-                    const item = byCategory[cat.key];
-                    return (
-                      <div key={cat.key} className="flex flex-col gap-0.5">
-                        <div className="aspect-square rounded-lg overflow-hidden bg-muted">
-                          {item?.image_url ? (
-                            <img
-                              src={item.image_url}
-                              alt={cat.label}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-[10px] text-muted-foreground/50">
-                              —
-                            </div>
-                          )}
-                        </div>
-                        <p className="text-[10px] text-center text-muted-foreground truncate">
-                          {cat.label}
-                        </p>
-                        {item?.caption && (
-                          <p className="text-[10px] text-center text-foreground/70 truncate">
-                            {item.caption}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                {post.note && (
-                  <p className="mt-2 text-xs text-muted-foreground italic">
-                    {post.note}
-                  </p>
+              <div
+                key={ds}
+                onClick={() => post && router.push(`/post?date=${ds}`)}
+                style={{
+                  aspectRatio: "1",
+                  cursor: post ? "pointer" : "default",
+                  borderRadius: 3,
+                  overflow: "hidden",
+                  boxShadow: isToday ? "0 0 0 1.5px #E8663C" : "none",
+                  position: "relative",
+                  transition: "opacity 0.1s",
+                }}
+              >
+                {post ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, width: "100%", height: "100%" }}>
+                    {CATEGORIES.map(cat => (
+                      <div
+                        key={cat.key}
+                        style={{
+                          background: post.categories.includes(cat.key)
+                            ? CELL_GRADIENTS[cat.key]
+                            : "#DEDAD2",
+                        }}
+                      />
+                    ))}
+                  </div>
+                ) : isFuture ? (
+                  <div style={{
+                    width: "100%",
+                    height: "100%",
+                    border: "1px solid #EDE6D8",
+                    borderRadius: 3,
+                    boxSizing: "border-box",
+                  }} />
+                ) : (
+                  <div style={{
+                    width: "100%",
+                    height: "100%",
+                    background: "#EFEADF",
+                    borderRadius: 3,
+                  }} />
                 )}
               </div>
             );
           })}
         </div>
-      )}
+      </div>
+
+      {/* å¡ä¾ */}
+      <div style={{ display: "flex", gap: 20, alignItems: "center", paddingTop: 8 }}>
+        <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+          <div style={{ width: 14, height: 14, borderRadius: 2, background: "linear-gradient(160deg, #D9BFB0, #C9A28F)" }} />
+          <span style={{ fontSize: 9, color: "#A79D8C", letterSpacing: "0.12em" }}>ã¨ãããããæ¥</span>
+        </div>
+        <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+          <div style={{ width: 14, height: 14, borderRadius: 2, background: "#EFEADF" }} />
+          <span style={{ fontSize: 9, color: "#A79D8C", letterSpacing: "0.12em" }}>ãããã¿</span>
+        </div>
+      </div>
     </div>
   );
 }
