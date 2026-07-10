@@ -1,1 +1,75 @@
+@import "tailwindcss";
 
+/* ============================================
+   yomu カラーパレット
+   「無印良品の店内でフィルムカメラの写真を見る感じ」
+   ============================================ */
+:root {
+  --background: #faf7f2;      /* 生成りホワイト */
+  --foreground: #2b2b28;      /* 墨色テキスト */
+  --accent: #e8663c;          /* 柿色 */
+  --accent-soft: #f3c5b3;     /* 柿色（淡） */
+  --muted: #8a857c;           /* 灰茶 */
+  --muted-soft: #e9e4db;      /* ボーダー・区切り */
+  --card: #fffdf9;            /* カード面 */
+  --radius: 0.75rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-muted: var(--muted);
+  --color-muted-soft: var(--muted-soft);
+  --color-card: var(--card);
+  --font-heading: var(--font-zen-kaku), sans-serif;
+  --font-latin: var(--font-instrument), sans-serif;
+  --radius-lg: var(--radius);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-zen-kaku), var(--font-instrument), sans-serif;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: 0.01em;
+}
+
+/* ============================================
+   フィルム風グレインテクスチャ
+   SVG feTurbulence をオーバーレイとして全画面に敷く
+   ============================================ */
+.film-grain::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 240px 240px;
+}
+
+/* 写真をフィルム風（低彩度・ややフェード）にする */
+.film-photo {
+  filter: saturate(0.82) contrast(0.96) brightness(1.02);
+}
+
+/* 未投稿時のぼかし（相互主義の表現） */
+.locked-blur {
+  filter: blur(18px) saturate(0.6);
+  transform: scale(1.06); /* ぼかしの縁の白抜け防止 */
+}
+
+/* ゴーストボタン（ラインのみ・塗りなし） */
+.ghost-btn {
+  border: 1px solid rgba(43, 43, 40, 0.2);
+  background: transparent;
+  border-radius: 9999px;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
