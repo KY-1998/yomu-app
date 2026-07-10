@@ -1,6 +1,6 @@
 // æç¨¿ç»é¢ - å½æ¥ & éå»æ¥ä»ç·¨éå¯¾å¿
 "use client";
-import { Suspense, useRef, useState, useEffect } from "react";
+import { Suspense, useRef, useState, useEffect, ChangeEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import imageCompression from "browser-image-compression";
 import { CATEGORIES, jstToday, type CategoryKey } from "@/lib/utils";
@@ -131,7 +131,7 @@ function PostPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetDate]);
 
-  async function handleFileChange(key: CategoryKey, e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileChange(key: CategoryKey, e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     const previewUrl = URL.createObjectURL(file);
@@ -179,7 +179,6 @@ function PostPageInner() {
           if (upErr) throw upErr;
           imageUrl = path;
         } else if (imageUrl.startsWith("http")) {
-          // æ¢å­ã®signed URL â storage pathãåå©ç¨ããããDBããåå¾
           const { data: existing } = await supabase
             .from("post_items")
             .select("image_url")
@@ -218,7 +217,7 @@ function PostPageInner() {
   const deliverLabel =
     filledCount === 0
       ? "ã¾ã ã:ãªã«ããã*ã¾ãã"
-      : `${filledCount}æãå±ãã`;
+      : `${filledCount}æãå±ãã`;
 
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
@@ -276,7 +275,7 @@ function PostPageInner() {
           </div>
 
           <span style={{ fontSize: 11, fontWeight: 300, color: "#A79D8C", letterSpacing: "0.08em" }}>
-            1<8Ã©æ-ã§ããå±ãããã¾ã
+            1<8Ã©æ-ã§ããå±ãããã¾ã
           </span>
         </div>
 
@@ -293,7 +292,7 @@ function PostPageInner() {
                       aspectRatio: "1",
                       position: "relative",
                       overflow: "hidden",
-                      background: `${CELL_TEXTUPE}, ${gradient}`,
+                      background: `${CELL_TEXTURE}, ${gradient}`,
                       boxShadow: "inset 0 0 30px rgba(43,43,40,0.14)",
                     }}>
                       <img
@@ -402,7 +401,7 @@ function PostPageInner() {
         {filledCount === 4 && (
           <div style={{ display: "flex", justifyContent: "center", marginTop: -12 }}>
             <span style={{ fontSize: 10, fontWeight: 400, letterSpacing: "0.3em", color: "#8A8375" }}>
-              â ä»æ¥ã4cã³ããs£ãã¾ãã â
+              â ä»æ¥ã®4ã³ãããããã¾ãã â
             </span>
           </div>
         )}
@@ -463,7 +462,7 @@ function PostPageInner() {
               : deliverLabel}
           </button>
           <span style={{ fontSize: 9, fontWeight: 300, color: "#C2B9A8", textAlign: "center", letterSpacing: "0.14em" }}>
-            ãã¨ããè¿½å ãã§ãã¾ã
+            ãã¨ããè¿½å ã¢ã§ãã¾ã
           </span>
         </div>
       </div>
