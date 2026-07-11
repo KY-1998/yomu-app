@@ -14,19 +14,21 @@ export default function LandingPage() {
   const [magicError, setMagicError] = useState<string | null>(null);
 
   async function handleGoogleLogin() {
+    const next = new URLSearchParams(window.location.search).get("next") ?? "/home";
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
       },
     });
   }
 
   async function handleAppleLogin() {
+    const next = new URLSearchParams(window.location.search).get("next") ?? "/home";
     await supabase.auth.signInWithOAuth({
       provider: "apple",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
       },
     });
   }
@@ -36,7 +38,7 @@ export default function LandingPage() {
     setMagicLoading(true); setMagicError(null);
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(new URLSearchParams(window.location.search).get("next") ?? "/home")}` },
     });
     if (error) { setMagicError(error.message); setMagicLoading(false); }
     else setMagicSent(true);
