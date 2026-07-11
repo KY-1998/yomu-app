@@ -40,9 +40,10 @@ export default function ProfilePage() {
   useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push("/"); return; }
+      // サーバー側の (app)/layout.tsx が認証チェック済みのため、
+      // クライアント側で router.push せずそのままreturnする
+      if (!user) return;
 
-      // プロフィール取得
       const { data: prof } = await supabase
         .from("profiles")
         .select("username, display_name, bio, avatar_url")
@@ -50,7 +51,6 @@ export default function ProfilePage() {
         .maybeSingle();
       setProfile(prof);
 
-      // アバター signed URL
       if (prof?.avatar_url) {
         const { data: avu } = await supabase.storage
           .from("avatars")
@@ -58,7 +58,6 @@ export default function ProfilePage() {
         if (avu?.signedUrl) setAvatarSignedUrl(avu.signedUrl);
       }
 
-      // 投稿取得（最新12件）
       const { data: rawPosts } = await supabase
         .from("posts")
         .select("id, post_date, post_items(category, image_url)")
@@ -93,7 +92,6 @@ export default function ProfilePage() {
         setPosts(enriched);
       }
 
-      // 友達数
       const { count } = await supabase
         .from("friendships")
         .select("*", { count: "exact", head: true })
@@ -113,19 +111,12 @@ export default function ProfilePage() {
 
   return (
     <div style={{ padding: "56px 0 0", minHeight: "100%", display: "flex", flexDirection: "column" }}>
-      {/* プロフィールヘッダー */}
       <div style={{ padding: "28px 24px 24px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-        {/* アバター */}
         <div style={{
-          width: 72,
-          height: 72,
-          borderRadius: "50%",
+          width: 72, height: 72, borderRadius: "50%",
           background: avatarSignedUrl ? "transparent" : "linear-gradient(160deg, #D9BFB0, #C9A28F)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          overflow: "hidden",
-          flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          overflow: "hidden", flexShrink: 0,
         }}>
           {avatarSignedUrl ? (
             <img src={avatarSignedUrl} alt={displayName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -136,19 +127,15 @@ export default function ProfilePage() {
           )}
         </div>
 
-        {/* 名前 */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
           <span style={{ fontSize: 16, fontWeight: 500, letterSpacing: "0.12em", color: "#2B2B28" }}>
             {displayName.toUpperCase()}
           </span>
           {username && (
-            <span style={{ fontSize: 10, color: "#B4AA98", letterSpacing: "0.12em" }}>
-              @{username}
-            </span>
+            <span style={{ fontSize: 10, color: "#B4AA98", letterSpacing: "0.12em" }}>@{username}</span>
           )}
         </div>
 
-        {/* 統計 */}
         <div style={{ display: "flex", gap: 32, marginTop: 4 }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
             <span style={{ fontSize: 16, fontWeight: 500, color: "#2B2B28", letterSpacing: "0.06em" }}>
@@ -158,48 +145,29 @@ export default function ProfilePage() {
           </div>
           <div style={{ width: 1, background: "#EAE2D2" }} />
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-            <span style={{ fontSize: 16, fontWeight: 500, color: "#2B2B28", letterSpacing: "0.06em" }}>
-              {friendCount}
-            </span>
+            <span style={{ fontSize: 16, fontWeight: 500, color: "#2B2B28", letterSpacing: "0.06em" }}>{friendCount}</span>
             <span style={{ fontSize: 9, color: "#A79D8C", letterSpacing: "0.16em" }}>友達</span>
           </div>
         </div>
 
-        {/* 編集ボタン */}
         <Link
           href="/profile/edit"
           style={{
-            display: "block",
-            width: "100%",
-            border: "1px solid #DDD3C0",
-            borderRadius: 9999,
-            padding: "10px 0",
-            textAlign: "center",
-            fontSize: 12,
-            fontWeight: 400,
-            color: "#8A8375",
-            letterSpacing: "0.14em",
-            textDecoration: "none",
-            marginTop: 4,
+            display: "block", width: "100%", border: "1px solid #DDD3C0", borderRadius: 9999,
+            padding: "10px 0", textAlign: "center", fontSize: 12, fontWeight: 400,
+            color: "#8A8375", letterSpacing: "0.14em", textDecoration: "none", marginTop: 4,
           }}
         >
           プロフィールを編集
         </Link>
       </div>
 
-      {/* 区切り線 */}
       <div style={{ height: 1, background: "#EAE2D2", margin: "0 24px" }} />
 
-      {/* この投稿セクション */}
       <div style={{ padding: "20px 24px 0", display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: "0.14em", color: "#2B2B28" }}>
-            この投稿
-          </span>
-          <Link
-            href="/history"
-            style={{ fontSize: 10, color: "#A79D8C", letterSpacing: "0.12em", textDecoration: "none" }}
-          >
+          <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: "0.14em", color: "#2B2B28" }}>この投稿</span>
+          <Link href="/history" style={{ fontSize: 10, color: "#A79D8C", letterSpacing: "0.12em", textDecoration: "none" }}>
             全て見る ›
           </Link>
         </div>
@@ -214,13 +182,8 @@ export default function ProfilePage() {
             <Link
               href="/post"
               style={{
-                border: "1px solid #E8663C",
-                color: "#E8663C",
-                borderRadius: 9999,
-                padding: "10px 24px",
-                fontSize: 11,
-                letterSpacing: "0.16em",
-                textDecoration: "none",
+                border: "1px solid #E8663C", color: "#E8663C", borderRadius: 9999,
+                padding: "10px 24px", fontSize: 11, letterSpacing: "0.16em", textDecoration: "none",
               }}
             >
               最初の4コマを届ける
@@ -228,74 +191,50 @@ export default function ProfilePage() {
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
-            {posts.map((post) => {
-              // 最初の写真があるカヅゴリを探す（サムネイル用）
-
-              return (
-                <button
-                  key={post.id}
-                  onClick={() => router.push(`/post?date=${post.post_date}`)}
-                  style={{
-                    aspectRatio: "1",
-                    padding: 0,
-                    border: "none",
-                    cursor: "pointer",
-                    borderRadius: 3,
-                    overflow: "hidden",
-                    background: "transparent",
-                    position: "relative",
-                  }}
-                >
-                  {/* 2x2 ミニグリッド */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, width: "100%", height: "100%" }}>
-                    {CATEGORIES.map(cat => {
-                      const url = post.signedUrls[cat.key];
-                      const hasCategory = post.categories.includes(cat.key);
-                      return (
-                        <div
-                          key={cat.key}
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            background: hasCategory
-                              ? CELL_GRADIENTS[cat.key]
-                              : "#EFEADF",
-                            position: "relative",
-                            overflow: "hidden",
-                          }}
-                        >
-                          {url && (
-                            <img
-                              src={url}
-                              alt={cat.label}
-                              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </button>
-              );
-            })}
+            {posts.map((post) => (
+              <button
+                key={post.id}
+                onClick={() => router.push(`/post?date=${post.post_date}`)}
+                style={{
+                  aspectRatio: "1", padding: 0, border: "none", cursor: "pointer",
+                  borderRadius: 3, overflow: "hidden", background: "transparent", position: "relative",
+                }}
+              >
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, width: "100%", height: "100%" }}>
+                  {CATEGORIES.map(cat => {
+                    const url = post.signedUrls[cat.key];
+                    const hasCategory = post.categories.includes(cat.key);
+                    return (
+                      <div
+                        key={cat.key}
+                        style={{
+                          width: "100%", height: "100%",
+                          background: hasCategory ? CELL_GRADIENTS[cat.key] : "#EFEADF",
+                          position: "relative", overflow: "hidden",
+                        }}
+                      >
+                        {url && (
+                          <img src={url} alt={cat.label}
+                            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </button>
+            ))}
           </div>
         )}
       </div>
 
-      {/* 区切り線 */}
       <div style={{ height: 1, background: "#EAE2D2", margin: "20px 24px 0" }} />
 
-      {/* その他メニュー */}
       <div style={{ padding: "0 24px" }}>
         <Link
           href="/invite"
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "16px 0",
-            textDecoration: "none",
-            color: "#2B2B28",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "16px 0", textDecoration: "none", color: "#2B2B28",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
