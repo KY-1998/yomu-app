@@ -1,11 +1,11 @@
 "use client";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Mail, CheckCircle2 } from "lucide-react";
 
-export default function LandingPage() {
+function LandingPageInner() {
   const supabase = createClient();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "/home";
@@ -109,5 +109,13 @@ export default function LandingPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function LandingPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-dvh items-center justify-center"><span className="text-sm text-muted">読み込み中...</span></div>}>
+      <LandingPageInner />
+    </Suspense>
   );
 }
