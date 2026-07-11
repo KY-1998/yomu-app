@@ -62,7 +62,7 @@ export default function JoinPage() {
         <div className="flex flex-col items-center gap-4 text-center">
           <p className="text-sm text-foreground">友達からの招待リンクです。</p>
           <p className="text-sm text-muted">まずGoogleでログインして、<br />もう一度このURLにアクセスしてください。</p>
-          <Button onClick={() => router.push("/")}>ログインページへ</Button>
+          <Button onClick={() => router.push(`/?next=/join/${code}`)}>ログインページへ</Button>
         </div>
       )}
 
