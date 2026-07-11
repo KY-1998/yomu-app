@@ -29,7 +29,10 @@ export default function JoinPage() {
       if (!invite) { setStatus("expired"); return; }
       if (new Date(invite.expires_at) < new Date()) { setStatus("expired"); return; }
       if (invite.created_by === user.id) { setStatus("own_invite"); return; }
-      if (invite.used_by) { setStatus("expired"); return; }
+      if (invite.used_by) {
+        if (invite.used_by === user.id) { setStatus("already_friends"); return; }
+        setStatus("expired"); return;
+      }
 
       setInviterName((invite.profiles as any)?.display_name ?? "だれか");
       setStatus("ready");
