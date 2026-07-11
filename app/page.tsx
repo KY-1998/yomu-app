@@ -1,20 +1,20 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Mail, CheckCircle2 } from "lucide-react";
 
 export default function LandingPage() {
   const supabase = createClient();
-  const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next") ?? "/home";
   const [email, setEmail] = useState("");
   const [magicSent, setMagicSent] = useState(false);
   const [magicLoading, setMagicLoading] = useState(false);
   const [magicError, setMagicError] = useState<string | null>(null);
 
   async function handleGoogleLogin() {
-    const next = new URLSearchParams(window.location.search).get("next") ?? "/home";
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -24,7 +24,6 @@ export default function LandingPage() {
   }
 
   async function handleAppleLogin() {
-    const next = new URLSearchParams(window.location.search).get("next") ?? "/home";
     await supabase.auth.signInWithOAuth({
       provider: "apple",
       options: {
@@ -38,7 +37,7 @@ export default function LandingPage() {
     setMagicLoading(true); setMagicError(null);
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(new URLSearchParams(window.location.search).get("next") ?? "/home")}` },
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
     });
     if (error) { setMagicError(error.message); setMagicLoading(false); }
     else setMagicSent(true);
