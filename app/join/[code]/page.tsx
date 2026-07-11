@@ -20,16 +20,14 @@ export default function JoinPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setStatus("not_logged_in"); return; }
 
-      const { data: inviteRows } = await supabase.rpc("get_invite_info", { invite_code: code });
-      const invite = inviteRows?.[0] ?? null;
+      // SECURITY DEFINER RPC でRLSをバイパスして招待者情報を取得
+      const { data: rows } = await supabase.rpc("get_invite_info", { invite_code: code });
+      const invite = rows?.[0] ?? null;
 
       if (!invite) { setStatus("expired"); return; }
       if (new Date(invite.expires_at) < new Date()) { setStatus("expired"); return; }
       if (invite.created_by === user.id) { setStatus("own_invite"); return; }
-      if (invite.used_by) {
-        if (invite.used_by === user.id) { setStatus("already_friends"); return; }
-        setStatus("expired"); return;
-      }
+      if (invite.used_by) { setStatus("expired"); return; }
 
       setInviterName(invite.display_name ?? "だれか");
       setStatus("ready");
@@ -38,6 +36,7 @@ export default function JoinPage() {
 
   async function handleAccept() {
     setSubmitting(true);
+    // 関数引数名は invite_code (スキーマ定義に合わせる)
     const { error } = await supabase.rpc("redeem_invite", { invite_code: code });
     if (!error) {
       setStatus("success");
@@ -62,7 +61,7 @@ export default function JoinPage() {
         <div className="flex flex-col items-center gap-4 text-center">
           <p className="text-sm text-foreground">友達からの招待リンクです。</p>
           <p className="text-sm text-muted">まずGoogleでログインして、<br />もう一度このURLにアクセスしてください。</p>
-          <Button onClick={() => router.push(`/?next=/join/${code}`)}>ログインページへ</Button>
+          <Button onClick={() => router.push("/")}>ログインページへ</Button>
         </div>
       )}
 
