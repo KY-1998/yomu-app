@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Copy, Check, Users } from "lucide-react";
 
 type Invite = { code: string; expires_at: string; used_by: string | null };
-type Friend = { friend_id: string; profiles: { display_name: string; username: string } | null };
+type FriendProfile = { id: string; display_name: string | null; username: string | null };
 
 function randomCode(len = 8) {
   return Array.from(crypto.getRandomValues(new Uint8Array(len)))
@@ -16,7 +16,7 @@ function randomCode(len = 8) {
 export default function InvitePage() {
   const supabase = createClient();
   const [invite, setInvite] = useState<Invite | null>(null);
-  const [friends, setFriends] = useState<Friend[]>([]);
+  const [friends, setFriends] = useState<FriendProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
@@ -49,22 +49,26 @@ export default function InvitePage() {
         if (created) setInvite(created);
       }
 
-      // Load friends
-      const { data: friendData } = await supabase
+      // Step 1: get friend IDs from friendships (no nested joins to avoid dual-FK 400 error)
+      const { data: friendships } = await supabase
         .from("friendships")
-        .select("user_a, user_b, profiles!friendships_user_a_fkey(display_name, username), profiles!friendships_user_b_fkey(display_name, username)")
+        .select("user_a, user_b")
         .or(`user_a.eq.${user.id},user_b.eq.${user.id}`)
         .eq("status", "accepted");
 
-      if (friendData) {
-        const mapped = friendData.map((f: any) => {
-          const isSideA = f.user_a === user.id;
-          return {
-            friend_id: isSideA ? f.user_b : f.user_a,
-            profiles: isSideA ? f["profiles!friendships_user_b_fkey"] : f["profiles!friendships_user_a_fkey"],
-          };
-        });
-        setFriends(mapped);
+      if (friendships && friendships.length > 0) {
+        // Step 2: collect friend IDs (the side that is not the current user)
+        const friendIds = friendships.map((f) =>
+          f.user_a === user.id ? f.user_b : f.user_a
+        );
+
+        // Step 3: fetch their profiles (RLS allows since we're friends)
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, display_name, username")
+          .in("id", friendIds);
+
+        if (profiles) setFriends(profiles);
       }
 
       setLoading(false);
@@ -112,13 +116,13 @@ export default function InvitePage() {
         ) : (
           <ul className="flex flex-col gap-2">
             {friends.map((f) => (
-              <li key={f.friend_id} className="flex items-center gap-3 rounded-xl bg-muted/20 px-4 py-3">
+              <li key={f.id} className="flex items-center gap-3 rounded-xl bg-muted/20 px-4 py-3">
                 <div className="flex size-9 items-center justify-center rounded-full bg-accent/20 text-sm font-medium text-accent">
-                  {f.profiles?.display_name?.[0] ?? "?"}
+                  {f.display_name?.[0] ?? "?"}
                 </div>
                 <div>
-                  <p className="text-sm font-medium">{f.profiles?.display_name ?? "名無し"}</p>
-                  <p className="text-xs text-muted">@{f.profiles?.username ?? "unknown"}</p>
+                  <p className="text-sm font-medium">{f.display_name ?? "名無し"}</p>
+                  <p className="text-xs text-muted">@{f.username ?? "unknown"}</p>
                 </div>
               </li>
             ))}
