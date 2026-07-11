@@ -1,4 +1,4 @@
-// OAuth コールバック処理
+// OAuth / Magic Link コールバック処理
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
@@ -29,10 +29,35 @@ export async function GET(request: NextRequest) {
     );
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // プロフィールが未設定の場合はセットアップ画面へ
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("display_name")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (!profile?.display_name) {
+          // 新規ユーザー: プロフィール行がなければ作成
+          if (!profile) {
+            const username = "user_" + user.id.replace(/-/g, "").substring(0, 12);
+            await supabase.from("profiles").insert({
+              id: user.id,
+              username,
+              display_name: "",
+              bio: "",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            });
+          }
+          const setupParam = next !== "/home" ? `?next=${encodeURIComponent(next)}` : "";
+          return NextResponse.redirect(`${origin}/setup${setupParam}`);
+        }
+      }
       return NextResponse.redirect(`${origin}${next}`);
     }
   }
 
-  // OAuth エラー時はトップへ
   return NextResponse.redirect(`${origin}/?error=auth`);
 }
