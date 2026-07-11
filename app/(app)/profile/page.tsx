@@ -97,7 +97,7 @@ export default function ProfilePage() {
       const { count } = await supabase
         .from("friendships")
         .select("*", { count: "exact", head: true })
-        .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`)
+        .or(`user_a.eq.${user.id},user_b.eq.${user.id}`)
         .eq("status", "accepted");
       setFriendCount(count ?? 0);
 
