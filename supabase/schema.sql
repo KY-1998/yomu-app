@@ -352,3 +352,28 @@ create policy "post_images_select_reciprocal" on storage.objects
       )
     )
   );
+
+
+-- ============================================================
+-- get_invite_info: 招待コードの情報を返す（未ログインユーザーからも呼び出し可能）
+-- ============================================================
+create or replace function public.get_invite_info(invite_code text)
+returns json
+language plpgsql security definer set search_path = public
+as $$
+declare
+  result json;
+begin
+  select json_build_object(
+    'inviter_name', p.display_name,
+    'expires_at',   i.expires_at,
+    'valid',        (i.used_by is null and i.expires_at > now())
+  )
+  into result
+  from public.invites i
+  join public.profiles p on p.id = i.created_by
+  where i.code = invite_code;
+
+  return result;
+end;
+$$;
