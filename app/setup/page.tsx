@@ -18,7 +18,6 @@ function SetupPageInner() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push("/"); return; }
-      // Google / Apple のユーザー名を初期値に
       const googleName =
         user.user_metadata?.full_name ||
         user.user_metadata?.name ||
@@ -35,10 +34,14 @@ function SetupPageInner() {
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    await supabase
-      .from("profiles")
-      .update({ display_name: displayName.trim(), updated_at: new Date().toISOString() })
-      .eq("id", user.id);
+    // upsert でプロフィール行がなくても対応
+    await supabase.from("profiles").upsert({
+      id: user.id,
+      display_name: displayName.trim(),
+      username: "user_" + user.id.replace(/-/g, "").substring(0, 12),
+      bio: "",
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "id" });
     router.push(next);
   }
 
@@ -58,7 +61,6 @@ function SetupPageInner() {
       </div>
 
       <div className="flex w-full max-w-xs flex-col gap-6">
-        {/* アバタープレビュー */}
         <div className="flex justify-center">
           <div className="flex size-20 items-center justify-center rounded-full bg-accent/20">
             <span className="text-3xl font-medium text-accent">
