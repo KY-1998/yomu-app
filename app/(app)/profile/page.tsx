@@ -40,7 +40,7 @@ export default function ProfilePage() {
   useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push("/login"); return; }
+      if (!user) { router.push("/"); return; }
 
       // プロフィール取得
       const { data: prof } = await supabase
