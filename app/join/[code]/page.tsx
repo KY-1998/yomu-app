@@ -60,8 +60,10 @@ export default function JoinPage() {
       {status === "not_logged_in" && (
         <div className="flex flex-col items-center gap-4 text-center">
           <p className="text-sm text-foreground">友達からの招待リンクです。</p>
-          <p className="text-sm text-muted">まずGoogleでログインして、<br />もう一度このURLにアクセスしてください。</p>
-          <Button onClick={() => router.push("/")}>ログインページへ</Button>
+          <p className="text-sm text-muted">ログインすると自動的に友達になれます。</p>
+          <Button onClick={() => router.push(`/?next=${encodeURIComponent(`/join/${code}`)}`)}>
+            ログインして友達になる
+          </Button>
         </div>
       )}
 
