@@ -1,4 +1,4 @@
-// æç¨¿ç»é¢ - å½æ¥ & éå»æ¥ä»ç·¨éå¯¾å¿
+// 投稿画面 - 当日 & 過去日付編集対応
 "use client";
 import { Suspense, useRef, useState, useEffect, ChangeEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -6,7 +6,7 @@ import imageCompression from "browser-image-compression";
 import { CATEGORIES, jstToday, type CategoryKey } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 
-// ã«ãã´ãªãã¨ã®ã°ã©ãã¼ã·ã§ã³
+// カテゴリごとのグラデーション
 const CELL_GRADIENTS: Record<string, string> = {
   face: "linear-gradient(160deg, #D9BFB0, #C9A28F)",
   scene: "linear-gradient(160deg, #A8B5A0, #96A48D)",
@@ -49,7 +49,7 @@ function formatDateLabel(dateStr: string) {
 
 function formatDateHeading(dateStr: string) {
   const today = jstToday();
-  if (dateStr === today) return null; // null = show "ãããã®"
+  if (dateStr === today) return null; // null = show "きょうの"
   const d = new Date(dateStr + "T00:00:00+09:00");
   return new Intl.DateTimeFormat("ja-JP", { month: "long", day: "numeric" }).format(d);
 }
@@ -60,7 +60,7 @@ function PostPageInner() {
   const supabase = createClient();
   const inputRefs = useRef<Partial<Record<CategoryKey, HTMLInputElement>>>({});
 
-  // ?date=YYYY-MM-DD ãããã°ãã®æ¥ä»ããªããã°ä»æ¥
+  // ?date=YYYY-MM-DD があればその日付、なければ今日
   const paramDate = searchParams.get("date");
   const targetDate = (paramDate && /^\d{4}-\d{2}-\d{2}$/.test(paramDate)) ? paramDate : jstToday();
   const isPastEdit = targetDate !== jstToday();
@@ -147,7 +147,7 @@ function PostPageInner() {
     setError(null);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("ã­ã°ã¤ã³ãã¦ãã ãã");
+      if (!user) throw new Error("ログインしてください");
 
       const { data: post, error: postErr } = await supabase
         .from("posts")
@@ -179,6 +179,7 @@ function PostPageInner() {
           if (upErr) throw upErr;
           imageUrl = path;
         } else if (imageUrl.startsWith("http")) {
+          // 既存のsigned URL → storage pathを再利用するためDBから取得
           const { data: existing } = await supabase
             .from("post_items")
             .select("image_url")
@@ -207,7 +208,7 @@ function PostPageInner() {
 
       router.push(isPastEdit ? "/profile" : "/home");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "æç¨¿ã«å¤±æãã¾ãã");
+      setError(err instanceof Error ? err.message : "投稿に失敗しました");
     } finally {
       setSubmitting(false);
     }
@@ -216,8 +217,8 @@ function PostPageInner() {
   const dateHeading = formatDateHeading(targetDate);
   const deliverLabel =
     filledCount === 0
-      ? "ã¾ã ã:ãªã«ããã*ã¾ãã"
-      : `${filledCount}æãå±ãã`;
+      ? "まだ、なにもありません"
+      : `${filledCount}枚を届ける`;
 
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
@@ -228,7 +229,7 @@ function PostPageInner() {
         flexDirection: "column",
         gap: 36,
       }}>
-        {/* masthead */}
+        {/* マストヘッド */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <span style={{
             fontFamily: "var(--font-instrument), sans-serif",
@@ -243,9 +244,9 @@ function PostPageInner() {
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
             <span style={{ fontSize: 40, fontWeight: 500, letterSpacing: "0.06em", lineHeight: 1.1 }}>
               {dateHeading ? (
-                <>{dateHeading}ã®<br />4ã³ã</>
+                <>{dateHeading}の<br />4コマ</>
               ) : (
-                <>ãããã®<br />4ã³ã</>
+                <>きょうの<br />4コマ</>
               )}
             </span>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 7, paddingBottom: 6 }}>
@@ -275,11 +276,11 @@ function PostPageInner() {
           </div>
 
           <span style={{ fontSize: 11, fontWeight: 300, color: "#A79D8C", letterSpacing: "0.08em" }}>
-            1<8Ã©æ-ã§ããå±ãããã¾ã
+            1枚だけでも、届けられます
           </span>
         </div>
 
-        {/* 2x2 ãã©ãã°ãªãã */}
+        {/* 2×2 フォトグリッド */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           {CATEGORIES.map((cat) => {
             const cell = cells[cat.key];
@@ -332,13 +333,13 @@ function PostPageInner() {
                           fontSize: 10,
                         }}
                       >
-                        Ã
+                        ×
                       </button>
                     </div>
                     <input
                       type="text"
                       value={cell.caption}
-                      placeholder="ã²ã¨ãã¨"
+                      placeholder="ひとこと"
                       onChange={(e) =>
                         setCells((prev) => ({
                           ...prev,
@@ -367,7 +368,7 @@ function PostPageInner() {
                     onClick={() => inputRefs.current[cat.key]?.click()}
                     style={{
                       aspectRatio: "1",
-                      border: "1px dashed #DDD2C0",
+                      border: "1px dashed #DDD3C0",
                       background: "transparent",
                       display: "flex",
                       flexDirection: "column",
@@ -397,20 +398,20 @@ function PostPageInner() {
           })}
         </div>
 
-        {/* 4ã³ãå®æã¡ãã»ã¼ã¸ */}
+        {/* 4コマ完成メッセージ */}
         {filledCount === 4 && (
           <div style={{ display: "flex", justifyContent: "center", marginTop: -12 }}>
             <span style={{ fontSize: 10, fontWeight: 400, letterSpacing: "0.3em", color: "#8A8375" }}>
-              â ä»æ¥ã®4ã³ãããããã¾ãã â
+              — 今日の4コマ、そろいました —
             </span>
           </div>
         )}
 
-        {/* ãã¼ã */}
+        {/* ノート */}
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="ä»æ¥ã¨ããæ¥ããã²ã¨ãã¨ã§â¦"
+          placeholder="今日という日を、ひとことで…"
           rows={2}
           maxLength={200}
           style={{
@@ -435,7 +436,7 @@ function PostPageInner() {
           <p style={{ fontSize: 11, color: "#E8663C", letterSpacing: "0.06em" }}>{error}</p>
         )}
 
-        {/* éä¿¡ãã¿ã³ */}
+        {/* 送信ボタン */}
         <div style={{ marginTop: "auto", padding: "8px 0 14px", display: "flex", flexDirection: "column", gap: 10 }}>
           <button
             onClick={handleSubmit}
@@ -456,13 +457,13 @@ function PostPageInner() {
             }}
           >
             {submitting
-              ? "å±ãã¦ãã¾ãâ¦"
+              ? "届けています…"
               : isEditMode
-              ? `æ´æ°ãã (${filledCount}/4)`
+              ? `更新する (${filledCount}/4)`
               : deliverLabel}
           </button>
           <span style={{ fontSize: 9, fontWeight: 300, color: "#C2B9A8", textAlign: "center", letterSpacing: "0.14em" }}>
-            ãã¨ããè¿½å ã¢ã§ãã¾ã
+            あとから追加もできます
           </span>
         </div>
       </div>
@@ -474,7 +475,7 @@ export default function PostPage() {
   return (
     <Suspense fallback={
       <div style={{ display: "flex", minHeight: "50vh", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ fontSize: 11, color: "#A79D8C", letterSpacing: "0.14em" }}>èª­ã¿è¾¼ã¿ä¸­â¦</span>
+        <span style={{ fontSize: 11, color: "#A79D8C", letterSpacing: "0.14em" }}>読み込み中…</span>
       </div>
     }>
       <PostPageInner />
