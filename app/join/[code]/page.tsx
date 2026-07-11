@@ -61,7 +61,7 @@ export default function JoinPage() {
         <div className="flex flex-col items-center gap-4 text-center">
           <p className="text-sm text-foreground">友達からの招待リンクです。</p>
           <p className="text-sm text-muted">ログインすると自動的に友達になれます。</p>
-          <Button onClick={() => router.push(`/?next=${encodeURIComponent(`/join/${code}`)}`)}>
+          <Button onClick={() => router.push(`/login?next=${encodeURIComphonent(`/join/${code}`)}`)}>h
             ログインして友達になる
           </Button>
         </div>
