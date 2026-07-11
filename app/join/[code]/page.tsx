@@ -20,11 +20,8 @@ export default function JoinPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setStatus("not_logged_in"); return; }
 
-      const { data: invite } = await supabase
-        .from("invites")
-        .select("created_by, used_by, expires_at, profiles!invites_created_by_fkey(display_name)")
-        .eq("code", code)
-        .maybeSingle();
+      const { data: inviteRows } = await supabase.rpc("get_invite_info", { invite_code: code });
+      const invite = inviteRows?.[0] ?? null;
 
       if (!invite) { setStatus("expired"); return; }
       if (new Date(invite.expires_at) < new Date()) { setStatus("expired"); return; }
@@ -34,7 +31,7 @@ export default function JoinPage() {
         setStatus("expired"); return;
       }
 
-      setInviterName((invite.profiles as any)?.display_name ?? "だれか");
+      setInviterName(invite.display_name ?? "だれか");
       setStatus("ready");
     })();
   }, [code]);
