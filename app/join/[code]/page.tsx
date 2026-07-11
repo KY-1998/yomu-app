@@ -41,7 +41,7 @@ export default function JoinPage() {
 
   async function handleAccept() {
     setSubmitting(true);
-    const { error } = await supabase.rpc("redeem_invite", { code: code });
+    const { error } = await supabase.rpc("redeem_invite", { invite_code: code });
     if (!error) {
       setStatus("success");
       setTimeout(() => router.push("/home"), 1500);
