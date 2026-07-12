@@ -12,7 +12,7 @@ export default async function AppLayout({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/");
+  if (!user) redirect("/login");
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col">
