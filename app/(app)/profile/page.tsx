@@ -215,7 +215,7 @@ export default function ProfilePage() {
                       >
                         {url && (
                           <img src={url} alt={cat.label}
-                            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                         )}
                       </div>
                     );
