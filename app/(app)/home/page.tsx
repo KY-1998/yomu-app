@@ -30,6 +30,7 @@ function formatDateLabel() {
 export default function HomePage() {
   const [posts, setPosts] = useState([]);
   const [hasPostedToday, setHasPostedToday] = useState(false);
+  const [friendsPostedCount, setFriendsPostedCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -39,21 +40,30 @@ export default function HomePage() {
       if (!user) return;
 
       const { data: myPost } = await supabase.from("posts").select("id").eq("user_id", user.id).eq("post_date", jstToday()).maybeSingle();
-      setHasPostedToday(!!myPost);
+      const posted = !!myPost;
+      setHasPostedToday(posted);
 
-      const { data } = await supabase.from("posts").select(`id, note, created_at, profiles!posts_user_id_fkey ( username, display_name ), post_items ( category, image_url ), reactions ( emoji, user_id )`).eq("post_date", jstToday()).neq("user_id", user.id).order("created_at", { ascending: false });
+      if (posted) {
+        // 投稿済み → 友達の投稿を取得（RLSが通る）
+        const { data } = await supabase.from("posts").select(`id, note, created_at, profiles!posts_user_id_fkey ( username, display_name ), post_items ( category, image_url ), reactions ( emoji, user_id )`).eq("post_date", jstToday()).neq("user_id", user.id).order("created_at", { ascending: false });
 
-      if (data) {
-        const withUrls = await Promise.all(data.map(async (post) => {
-          const imageUrls = {};
-          await Promise.all(post.post_items.map(async (item) => {
-            const { data: urlData } = await supabase.storage.from("post-images").createSignedUrl(item.image_url, 3600);
-            if (urlData?.signedUrl) imageUrls[item.category] = urlData.signedUrl;
+        if (data) {
+          const withUrls = await Promise.all(data.map(async (post) => {
+            const imageUrls = {};
+            await Promise.all(post.post_items.map(async (item) => {
+              const { data: urlData } = await supabase.storage.from("post-images").createSignedUrl(item.image_url, 3600);
+              if (urlData?.signedUrl) imageUrls[item.category] = urlData.signedUrl;
+            }));
+            return { ...post, post_items: post.post_items.map((item) => ({ ...item, signedUrl: imageUrls[item.category] })) };
           }));
-          return { ...post, post_items: post.post_items.map((item) => ({ ...item, signedUrl: imageUrls[item.category] })) };
-        }));
-        setPosts(withUrls);
+          setPosts(withUrls);
+        }
+      } else {
+        // 未投稿 → 友達が何人投稿済みかだけ取得（SECURITY DEFINER関数）
+        const { data: count } = await supabase.rpc("count_friends_posts_today");
+        setFriendsPostedCount(count ?? 0);
       }
+
       setLoading(false);
     }
     load();
@@ -73,7 +83,13 @@ export default function HomePage() {
         </span>
         <span style={{ fontSize:40, fontWeight:500, letterSpacing:"0.06em", lineHeight:1.1 }}>きょう</span>
         <span style={{ fontSize:11, fontWeight:300, color:"#A79D8C", letterSpacing:"0.08em" }}>
-          {posts.length > 0 ? `${posts.length}人が4コマを届けました` : hasPostedToday ? "友達はまだ投稿していません" : "投稿すると友達の今日が見えます"}
+          {posts.length > 0
+            ? `${posts.length}人が4コマを届けました`
+            : hasPostedToday
+              ? "友達はまだ投稿していません"
+              : friendsPostedCount > 0
+                ? `${friendsPostedCount}人が4コマを届けました`
+                : "投稿すると友達の今日が見えます"}
         </span>
       </div>
 
@@ -86,6 +102,7 @@ export default function HomePage() {
       )}
 
       <div style={{ display:"flex", flexDirection:"column" }}>
+        {/* 投稿済み: 友達の投稿を通常表示 */}
         {posts.map((post) => {
           const author = post.profiles;
           const reactions = aggregateReactions(post.reactions);
@@ -100,7 +117,7 @@ export default function HomePage() {
                 </div>
               </div>
               <div style={{ position:"relative" }}>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:2, ...(hasPostedToday?{}:{ filter:"blur(18px) saturate(0.6)", transform:"scale(1.06)" }) }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:2 }}>
                   {CATEGORIES.map((c) => {
                     const item = itemsByCategory[c.key];
                     const gradient = CELL_GRADIENTS[c.key] ?? "linear-gradient(160deg, #EAE2D2, #DDD3C0)";
@@ -112,27 +129,42 @@ export default function HomePage() {
                     );
                   })}
                 </div>
-                {!hasPostedToday && (
-                  <div style={{ position:"absolute", inset:0, zIndex:5, backdropFilter:"blur(18px) saturate(1.05)", WebkitBackdropFilter:"blur(18px) saturate(1.05)", background:"rgba(250,247,242,0.45)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:22, textAlign:"center", padding:24 }}>
-                    <span style={{ fontSize:12, fontWeight:400, color:"#6E675C", lineHeight:2.1, letterSpacing:"0.12em" }}>今日の4コマを投稿すると<br/>見れます</span>
-                    <Link href="/post" style={{ border:"1px solid #E8663C", color:"#E8663C", background:"transparent", borderRadius:9999, padding:"13px 30px", fontSize:12, fontWeight:500, letterSpacing:"0.18em", textDecoration:"none" }}>4コマを撮りにいく</Link>
-                  </div>
-                )}
               </div>
               {post.note && <div style={{ padding:"14px 24px 0" }}><p style={{ margin:0, fontSize:11, fontWeight:300, lineHeight:2, color:"#6E675C", letterSpacing:"0.04em" }}>{post.note}</p></div>}
               <div style={{ padding:"12px 24px 0", display:"flex", gap:14, alignItems:"center", flexWrap:"wrap" }}>
                 {reactions.map((r) => (
-                  <button key={r.emoji} disabled={!hasPostedToday} style={{ display:"flex", alignItems:"center", gap:4, background:"transparent", border:"none", padding:0, cursor:hasPostedToday?"pointer":"default", opacity:hasPostedToday?1:0.5 }}>
+                  <button key={r.emoji} style={{ display:"flex", alignItems:"center", gap:4, background:"transparent", border:"none", padding:0, cursor:"pointer" }}>
                     <span style={{ fontSize:14, opacity:0.85 }}>{r.emoji}</span>
                     <span style={{ fontFamily:"var(--font-instrument), sans-serif", fontSize:11, color:"#C2B9A8" }}>{r.count}</span>
                   </button>
                 ))}
-                <button disabled={!hasPostedToday} style={{ fontSize:13, color:"#C2B9A8", background:"transparent", border:"none", cursor:hasPostedToday?"pointer":"default", fontWeight:300 }}>＋</button>
+                <button style={{ fontSize:13, color:"#C2B9A8", background:"transparent", border:"none", cursor:"pointer", fontWeight:300 }}>＋</button>
               </div>
             </div>
           );
         })}
+
+        {/* 未投稿 + 友達が投稿済み: ブラーのプレースホルダー */}
+        {!hasPostedToday && friendsPostedCount > 0 && Array.from({ length: friendsPostedCount }).map((_, i) => (
+          <div key={`placeholder-${i}`} style={{ paddingBottom:56 }}>
+            <div style={{ display:"flex", alignItems:"baseline", padding:"0 24px", gap:10, marginBottom:12 }}>
+              <span style={{ fontSize:11, fontWeight:500, letterSpacing:"0.14em", color:"#C2B9A8" }}>— — —</span>
+            </div>
+            <div style={{ position:"relative" }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:2, filter:"blur(18px) saturate(0.6)", transform:"scale(1.06)", overflow:"hidden" }}>
+                {CATEGORIES.map((c) => (
+                  <div key={c.key} style={{ aspectRatio:"1", background:`${CELL_TEXTURE}, ${CELL_GRADIENTS[c.key] ?? "linear-gradient(160deg, #EAE2D2, #DDD3C0)"}`, boxShadow:"inset 0 0 30px rgba(43,43,40,0.14)" }} />
+                ))}
+              </div>
+              <div style={{ position:"absolute", inset:0, zIndex:5, backdropFilter:"blur(18px) saturate(1.05)", WebkitBackdropFilter:"blur(18px) saturate(1.05)", background:"rgba(250,247,242,0.45)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:22, textAlign:"center", padding:24 }}>
+                <span style={{ fontSize:12, fontWeight:400, color:"#6E675C", lineHeight:2.1, letterSpacing:"0.12em" }}>今日の4コマを投稿すると<br/>見れます</span>
+                <Link href="/post" style={{ border:"1px solid #E8663C", color:"#E8663C", background:"transparent", borderRadius:9999, padding:"13px 30px", fontSize:12, fontWeight:500, letterSpacing:"0.18em", textDecoration:"none" }}>4コマを撮りにいく</Link>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
+
       {posts.length > 0 && <p style={{ textAlign:"center", fontSize:11, letterSpacing:"0.3em", color:"#A79D8C", padding:"16px 0 8px" }}>— きょうはここまで —</p>}
     </div>
   );
