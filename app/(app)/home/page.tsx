@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { CATEGORIES, jstToday, type CategoryKey } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -11,18 +11,13 @@ const CELL_GRADIENTS: Record<CategoryKey, string> = {
   food: "linear-gradient(160deg, #D6B98C, #C7A76F)",
 };
 const CELL_TEXTURE = "repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0 7px, rgba(43,43,40,0.03) 7px 14px)";
-const PRESET_EMOJIS = ["❤️", "😊", "😍", "😆", "👍", "🥹", "✨", "🫂"];
+const LIKE_EMOJI = "❤️";
 
 type Reaction = { emoji: string; user_id: string };
 
-function aggregateReactions(raw: Reaction[], myId: string | null) {
-  const map: Record<string, { count: number; mine: boolean }> = {};
-  raw.forEach((r) => {
-    if (!map[r.emoji]) map[r.emoji] = { count: 0, mine: false };
-    map[r.emoji].count++;
-    if (r.user_id === myId) map[r.emoji].mine = true;
-  });
-  return Object.entries(map).map(([emoji, v]) => ({ emoji, ...v }));
+function getLikes(reactions: Reaction[], myId: string | null) {
+  const likes = reactions.filter(r => r.emoji === LIKE_EMOJI);
+  return { count: likes.length, mine: likes.some(r => r.user_id === myId) };
 }
 
 function formatJST(iso: string) {
@@ -40,8 +35,6 @@ export default function HomePage() {
   const [friendsPostedCount, setFriendsPostedCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
-  const [pickerPostId, setPickerPostId] = useState<string | null>(null);
-  const pickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function load() {
@@ -82,42 +75,27 @@ export default function HomePage() {
     load();
   }, []);
 
-  // ピッカー外クリックで閉じる
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
-        setPickerPostId(null);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  async function toggleReaction(postId: string, emoji: string) {
+  async function toggleLike(postId: string) {
     if (!userId) return;
-
     const post = posts.find(p => p.id === postId);
-    const myReaction = post?.reactions.find((r: Reaction) => r.emoji === emoji && r.user_id === userId);
+    const liked = post?.reactions.some((r: Reaction) => r.emoji === LIKE_EMOJI && r.user_id === userId);
 
-    if (myReaction) {
-      // 楽観的削除
-      setPosts(prev => prev.map(p =>
-        p.id === postId
-          ? { ...p, reactions: p.reactions.filter((r: Reaction) => !(r.emoji === emoji && r.user_id === userId)) }
-          : p
-      ));
+    // 楽観的更新
+    setPosts(prev => prev.map(p =>
+      p.id !== postId ? p : {
+        ...p,
+        reactions: liked
+          ? p.reactions.filter((r: Reaction) => !(r.emoji === LIKE_EMOJI && r.user_id === userId))
+          : [...p.reactions, { emoji: LIKE_EMOJI, user_id: userId }],
+      }
+    ));
+
+    if (liked) {
       await supabase.from("reactions").delete()
-        .eq("post_id", postId).eq("user_id", userId).eq("emoji", emoji);
+        .eq("post_id", postId).eq("user_id", userId).eq("emoji", LIKE_EMOJI);
     } else {
-      // 楽観的追加
-      setPosts(prev => prev.map(p =>
-        p.id === postId
-          ? { ...p, reactions: [...p.reactions, { emoji, user_id: userId }] }
-          : p
-      ));
-      await supabase.from("reactions").insert({ post_id: postId, user_id: userId, emoji });
+      await supabase.from("reactions").insert({ post_id: postId, user_id: userId, emoji: LIKE_EMOJI });
     }
-    setPickerPostId(null);
   }
 
   if (loading) return (
@@ -155,9 +133,8 @@ export default function HomePage() {
       <div style={{ display:"flex", flexDirection:"column" }}>
         {posts.map((post) => {
           const author = post.profiles;
-          const reactions = aggregateReactions(post.reactions, userId);
+          const { count: likeCount, mine: liked } = getLikes(post.reactions, userId);
           const itemsByCategory = Object.fromEntries(post.post_items.map((i: any) => [i.category, i]));
-          const isPickerOpen = pickerPostId === post.id;
 
           return (
             <div key={post.id} style={{ paddingBottom:56 }}>
@@ -188,50 +165,23 @@ export default function HomePage() {
                 </div>
               )}
 
-              {/* リアクションエリア */}
-              <div style={{ padding:"12px 24px 0", display:"flex", gap:8, alignItems:"center", flexWrap:"wrap", position:"relative" }}>
-                {reactions.map((r) => (
-                  <button
-                    key={r.emoji}
-                    onClick={() => toggleReaction(post.id, r.emoji)}
-                    style={{
-                      display:"flex", alignItems:"center", gap:4,
-                      background: r.mine ? "rgba(232,102,60,0.08)" : "rgba(43,43,40,0.04)",
-                      border: r.mine ? "1px solid rgba(232,102,60,0.3)" : "1px solid rgba(43,43,40,0.1)",
-                      borderRadius:999, padding:"4px 10px",
-                      cursor:"pointer", transition:"all 0.15s",
-                    }}
-                  >
-                    <span style={{ fontSize:14 }}>{r.emoji}</span>
-                    <span style={{ fontFamily:"var(--font-instrument), sans-serif", fontSize:11, color: r.mine ? "#E8663C" : "#C2B9A8" }}>{r.count}</span>
-                  </button>
-                ))}
-
-                {/* ＋ボタン */}
-                <div style={{ position:"relative" }}>
-                  <button
-                    onClick={() => setPickerPostId(isPickerOpen ? null : post.id)}
-                    style={{ fontSize:13, color:"#C2B9A8", background:"rgba(43,43,40,0.04)", border:"1px solid rgba(43,43,40,0.1)", borderRadius:999, padding:"4px 10px", cursor:"pointer" }}
-                  >
-                    ＋
-                  </button>
-
-                  {isPickerOpen && (
-                    <div ref={pickerRef} style={{ position:"absolute", bottom:"calc(100% + 8px)", left:0, background:"#FDFAF5", border:"1px solid rgba(43,43,40,0.1)", borderRadius:16, padding:"10px 12px", display:"flex", gap:6, flexWrap:"wrap", boxShadow:"0 4px 20px rgba(43,43,40,0.12)", zIndex:20, minWidth:180 }}>
-                      {PRESET_EMOJIS.map(emoji => (
-                        <button
-                          key={emoji}
-                          onClick={() => toggleReaction(post.id, emoji)}
-                          style={{ fontSize:22, background:"none", border:"none", cursor:"pointer", padding:"2px 4px", borderRadius:8, transition:"transform 0.1s" }}
-                          onMouseEnter={e => (e.currentTarget.style.transform = "scale(1.2)")}
-                          onMouseLeave={e => (e.currentTarget.style.transform = "scale(1)")}
-                        >
-                          {emoji}
-                        </button>
-                      ))}
-                    </div>
+              {/* いいねボタン */}
+              <div style={{ padding:"12px 24px 0", display:"flex", alignItems:"center", gap:8 }}>
+                <button
+                  onClick={() => toggleLike(post.id)}
+                  style={{
+                    display:"flex", alignItems:"center", gap:5,
+                    background: liked ? "rgba(232,102,60,0.08)" : "transparent",
+                    border: liked ? "1px solid rgba(232,102,60,0.25)" : "1px solid rgba(43,43,40,0.1)",
+                    borderRadius:999, padding:"5px 14px",
+                    cursor:"pointer", transition:"all 0.15s",
+                  }}
+                >
+                  <span style={{ fontSize:14, filter: liked ? "none" : "grayscale(1)", opacity: liked ? 1 : 0.5 }}>❤️</span>
+                  {likeCount > 0 && (
+                    <span style={{ fontSize:11, color: liked ? "#E8663C" : "#C2B9A8", fontWeight:500 }}>{likeCount}</span>
                   )}
-                </div>
+                </button>
               </div>
             </div>
           );
