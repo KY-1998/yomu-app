@@ -1,7 +1,6 @@
 // きろく画面 - 月別カレンダー表示
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { CATEGORIES } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 
@@ -11,8 +10,14 @@ const CELL_GRADIENTS: Record<string, string> = {
   weather: "linear-gradient(160deg, #AEBFC9, #9DB0BD)",
   food: "linear-gradient(160deg, #D6B98C, #C7A76F)",
 };
+const CELL_TEXTURE = "repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0 7px, rgba(43,43,40,0.03) 7px 14px)";
 
 type DayPost = { post_id: string; categories: string[] };
+type PostDetail = {
+  date: string;
+  note: string | null;
+  items: { category: string; signedUrl?: string }[];
+};
 
 function toJSTDate() {
   return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
@@ -21,25 +26,34 @@ function padZ(n: number) { return String(n).padStart(2, "0"); }
 function makeDateStr(y: number, m: number, d: number) {
   return `${y}-${padZ(m + 1)}-${padZ(d)}`;
 }
+function formatDateJP(ds: string) {
+  const [y, m, d] = ds.split("-");
+  return `${parseInt(m)}月${parseInt(d)}日`;
+}
 
 const DAY_HEADERS = ["S", "M", "T", "W", "T", "F", "S"];
 
 export default function HistoryPage() {
-  const router = useRouter();
   const jstNow = toJSTDate();
   const todayStr = makeDateStr(jstNow.getFullYear(), jstNow.getMonth(), jstNow.getDate());
 
   const [year, setYear] = useState(jstNow.getFullYear());
-  const [month, setMonth] = useState(jstNow.getMonth()); // 0-indexed
+  const [month, setMonth] = useState(jstNow.getMonth());
   const [postsByDate, setPostsByDate] = useState<Record<string, DayPost>>({});
   const [streak, setStreak] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // モーダル
+  const [selectedPost, setSelectedPost] = useState<PostDetail | null>(null);
+  const [modalLoading, setModalLoading] = useState(false);
 
   const loadMonth = useCallback(async (y: number, m: number) => {
     setLoading(true);
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setLoading(false); return; }
+    setUserId(user.id);
 
     const lastDay = new Date(y, m + 1, 0).getDate();
     const start = makeDateStr(y, m, 1);
@@ -63,43 +77,57 @@ export default function HistoryPage() {
     }
     setPostsByDate(map);
 
-    // Streak: only calculate for current month view
     const nowY = jstNow.getFullYear();
     const nowM = jstNow.getMonth();
     if (y === nowY && m === nowM) {
-      // Load last 90 days
       const past90 = new Date(jstNow);
       past90.setDate(past90.getDate() - 90);
       const streakStart = makeDateStr(past90.getFullYear(), past90.getMonth(), past90.getDate());
-
       const { data: allPosts } = await supabase
         .from("posts")
         .select("post_date")
         .eq("user_id", user.id)
         .gte("post_date", streakStart)
         .lte("post_date", todayStr);
-
       if (allPosts) {
         const dateSet = new Set(allPosts.map((p: any) => p.post_date));
         let s = 0;
         const d = new Date(jstNow);
         while (s < 90) {
           const ds = makeDateStr(d.getFullYear(), d.getMonth(), d.getDate());
-          if (dateSet.has(ds)) {
-            s++;
-            d.setDate(d.getDate() - 1);
-          } else break;
+          if (dateSet.has(ds)) { s++; d.setDate(d.getDate() - 1); } else break;
         }
         setStreak(s);
       }
     }
-
     setLoading(false);
   }, [todayStr]);
 
-  useEffect(() => {
-    loadMonth(year, month);
-  }, [year, month, loadMonth]);
+  useEffect(() => { loadMonth(year, month); }, [year, month, loadMonth]);
+
+  async function openPost(ds: string) {
+    setModalLoading(true);
+    setSelectedPost({ date: ds, note: null, items: [] });
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("posts")
+      .select("id, note, post_items(category, image_url)")
+      .eq("post_date", ds)
+      .eq("user_id", userId!)
+      .maybeSingle();
+    if (data) {
+      const items = await Promise.all(
+        (data.post_items || []).map(async (item: any) => {
+          const { data: urlData } = await supabase.storage
+            .from("post-images")
+            .createSignedUrl(item.image_url, 3600);
+          return { category: item.category, signedUrl: urlData?.signedUrl };
+        })
+      );
+      setSelectedPost({ date: ds, note: data.note, items });
+    }
+    setModalLoading(false);
+  }
 
   const prevMonth = () => {
     if (month === 0) { setYear(y => y - 1); setMonth(11); }
@@ -110,9 +138,12 @@ export default function HistoryPage() {
     else setMonth(m => m + 1);
   };
   const isCurrentMonth = year === jstNow.getFullYear() && month === jstNow.getMonth();
-
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstWeekday = new Date(year, month, 1).getDay();
+
+  const itemsByCategory = selectedPost
+    ? Object.fromEntries(selectedPost.items.map(i => [i.category, i]))
+    : {};
 
   return (
     <div style={{ padding: "84px 24px 32px", minHeight: "100%", display: "flex", flexDirection: "column", gap: 32 }}>
@@ -134,124 +165,44 @@ export default function HistoryPage() {
 
       {/* 月ナビ */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <button
-          onClick={prevMonth}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            color: "#A79D8C",
-            fontSize: 20,
-            padding: "0 12px",
-            lineHeight: 1,
-            fontFamily: "var(--font-instrument), sans-serif",
-          }}
-        >
-          ‹
-        </button>
-        <span style={{
-          fontSize: 12,
-          fontWeight: 400,
-          letterSpacing: "0.16em",
-          color: "#2B2B28",
-          fontFamily: "var(--font-instrument), sans-serif",
-        }}>
+        <button onClick={prevMonth} style={{ background: "none", border: "none", cursor: "pointer", color: "#A79D8C", fontSize: 20, padding: "0 12px", lineHeight: 1, fontFamily: "var(--font-instrument), sans-serif" }}>‹</button>
+        <span style={{ fontSize: 12, fontWeight: 400, letterSpacing: "0.16em", color: "#2B2B28", fontFamily: "var(--font-instrument), sans-serif" }}>
           {year}.{padZ(month + 1)}
         </span>
-        <button
-          onClick={nextMonth}
-          disabled={isCurrentMonth}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: isCurrentMonth ? "default" : "pointer",
-            color: isCurrentMonth ? "#DDD3C0" : "#A79D8C",
-            fontSize: 20,
-            padding: "0 12px",
-            lineHeight: 1,
-            fontFamily: "var(--font-instrument), sans-serif",
-          }}
-        >
-          ›
-        </button>
+        <button onClick={nextMonth} disabled={isCurrentMonth} style={{ background: "none", border: "none", cursor: isCurrentMonth ? "default" : "pointer", color: isCurrentMonth ? "#DDD3C0" : "#A79D8C", fontSize: 20, padding: "0 12px", lineHeight: 1, fontFamily: "var(--font-instrument), sans-serif" }}>›</button>
       </div>
 
       {/* カレンダー */}
       <div>
-        {/* 曜日ヘッダー */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 8 }}>
           {DAY_HEADERS.map((d, i) => (
-            <span
-              key={i}
-              style={{
-                textAlign: "center",
-                fontSize: 8,
-                fontFamily: "var(--font-instrument), sans-serif",
-                letterSpacing: "0.1em",
-                color: "#C2B9A8",
-              }}
-            >
-              {d}
-            </span>
+            <span key={i} style={{ textAlign: "center", fontSize: 8, fontFamily: "var(--font-instrument), sans-serif", letterSpacing: "0.1em", color: "#C2B9A8" }}>{d}</span>
           ))}
         </div>
-
-        {/* 日付セル */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
-          {/* 月初めの空白 */}
-          {Array.from({ length: firstWeekday }).map((_, i) => (
-            <div key={`pad-${i}`} style={{ aspectRatio: "1" }} />
-          ))}
-
+          {Array.from({ length: firstWeekday }).map((_, i) => <div key={`pad-${i}`} style={{ aspectRatio: "1" }} />)}
           {Array.from({ length: daysInMonth }).map((_, i) => {
             const day = i + 1;
             const ds = makeDateStr(year, month, day);
             const post = postsByDate[ds];
             const isToday = ds === todayStr;
             const isFuture = ds > todayStr;
-
             return (
               <div
                 key={ds}
-                onClick={() => post && router.push(`/post?date=${ds}`)}
-                style={{
-                  aspectRatio: "1",
-                  cursor: post ? "pointer" : "default",
-                  borderRadius: 3,
-                  overflow: "hidden",
-                  boxShadow: isToday ? "0 0 0 1.5px #E8663C" : "none",
-                  position: "relative",
-                  transition: "opacity 0.1s",
-                }}
+                onClick={() => post && openPost(ds)}
+                style={{ aspectRatio: "1", cursor: post ? "pointer" : "default", borderRadius: 3, overflow: "hidden", boxShadow: isToday ? "0 0 0 1.5px #E8663C" : "none", position: "relative" }}
               >
                 {post ? (
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, width: "100%", height: "100%" }}>
                     {CATEGORIES.map(cat => (
-                      <div
-                        key={cat.key}
-                        style={{
-                          background: post.categories.includes(cat.key)
-                            ? CELL_GRADIENTS[cat.key]
-                            : "#DEDAD2",
-                        }}
-                      />
+                      <div key={cat.key} style={{ background: post.categories.includes(cat.key) ? CELL_GRADIENTS[cat.key] : "#DEDAD2" }} />
                     ))}
                   </div>
                 ) : isFuture ? (
-                  <div style={{
-                    width: "100%",
-                    height: "100%",
-                    border: "1px solid #EDE6D8",
-                    borderRadius: 3,
-                    boxSizing: "border-box",
-                  }} />
+                  <div style={{ width: "100%", height: "100%", border: "1px solid #EDE6D8", borderRadius: 3, boxSizing: "border-box" }} />
                 ) : (
-                  <div style={{
-                    width: "100%",
-                    height: "100%",
-                    background: "#EFEADF",
-                    borderRadius: 3,
-                  }} />
+                  <div style={{ width: "100%", height: "100%", background: "#EFEADF", borderRadius: 3 }} />
                 )}
               </div>
             );
@@ -270,6 +221,79 @@ export default function HistoryPage() {
           <span style={{ fontSize: 9, color: "#A79D8C", letterSpacing: "0.12em" }}>おやすみ</span>
         </div>
       </div>
+
+      {/* 写真モーダル */}
+      {selectedPost && (
+        <div
+          onClick={() => setSelectedPost(null)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 100,
+            background: "rgba(43,43,40,0.55)",
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+            display: "flex", alignItems: "flex-end", justifyContent: "center",
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: "#FAF7F2",
+              borderRadius: "20px 20px 0 0",
+              width: "100%",
+              maxWidth: 480,
+              paddingBottom: "env(safe-area-inset-bottom, 24px)",
+              overflow: "hidden",
+            }}
+          >
+            {/* ヘッダー */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 24px 16px" }}>
+              <span style={{ fontSize: 14, fontWeight: 500, letterSpacing: "0.08em" }}>
+                {formatDateJP(selectedPost.date)}
+              </span>
+              <button
+                onClick={() => setSelectedPost(null)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#A79D8C", fontSize: 20, lineHeight: 1, padding: 4 }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* 4コマグリッド */}
+            {modalLoading ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
+                <span style={{ fontSize: 11, color: "#A79D8C", letterSpacing: "0.14em" }}>読み込み中…</span>
+              </div>
+            ) : (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+                  {CATEGORIES.map(c => {
+                    const item = itemsByCategory[c.key];
+                    return (
+                      <div key={c.key} style={{ aspectRatio: "1", position: "relative", overflow: "hidden", background: item ? `${CELL_TEXTURE}, ${CELL_GRADIENTS[c.key]}` : "#EAE2D2" }}>
+                        {item?.signedUrl && (
+                          <img src={item.signedUrl} alt={c.label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        )}
+                        {item && (
+                          <span style={{ position: "absolute", top: 10, left: 10, fontSize: 8, letterSpacing: "0.28em", color: "rgba(250,247,242,0.95)", fontWeight: 500, textShadow: "0 0 8px rgba(43,43,40,0.3)" }}>
+                            {c.label}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {selectedPost.note && (
+                  <div style={{ padding: "16px 24px" }}>
+                    <p style={{ margin: 0, fontSize: 11, fontWeight: 300, lineHeight: 2, color: "#6E675C", letterSpacing: "0.04em" }}>
+                      {selectedPost.note}
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
