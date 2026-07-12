@@ -17,7 +17,7 @@ function SetupPageInner() {
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push("/"); return; }
+      if (!user) { router.push("/login"); return; }
       const googleName =
         user.user_metadata?.full_name ||
         user.user_metadata?.name ||
@@ -26,23 +26,36 @@ function SetupPageInner() {
       setDisplayName(googleName);
       setLoading(false);
     })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleSave() {
     if (!displayName.trim()) return;
     setSaving(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    // upsert でプロフィール行がなくても対応
-    await supabase.from("profiles").upsert({
-      id: user.id,
-      display_name: displayName.trim(),
-      username: "user_" + user.id.replace(/-/g, "").substring(0, 12),
-      bio: "",
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "id" });
-    router.push(next);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { router.push("/login"); return; }
+
+      const { error: upsertError } = await supabase.from("profiles").upsert({
+        id: user.id,
+        display_name: displayName.trim(),
+        username: "user_" + user.id.replace(/-/g, "").substring(0, 12),
+        bio: "",
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "id" });
+
+      if (upsertError) {
+        setSaving(false);
+        return;
+      }
+
+      // middlewareが参照するuser_metadataにprofile_completeフラグを設定
+      await supabase.auth.updateUser({ data: { profile_complete: true } });
+
+      router.push(next);
+    } catch {
+      setSaving(false);
+    }
   }
 
   if (loading) {
