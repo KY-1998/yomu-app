@@ -188,10 +188,6 @@ export default function HistoryPage() {
             const post = postsByDate[ds];
             const isToday = ds === todayStr;
             const isFuture = ds > todayStr;
-            // face カテゴリの写真をサムネイルとして使う
-            const thumb = post?.items.find(it => it.category === "face")?.signedUrl
-              || post?.items[0]?.signedUrl;
-
             return (
               <div
                 key={ds}
@@ -206,19 +202,18 @@ export default function HistoryPage() {
                 }}
               >
                 {post ? (
-                  thumb ? (
-                    <img
-                      src={thumb}
-                      alt=""
-                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                    />
-                  ) : (
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, width: "100%", height: "100%" }}>
-                      {CATEGORIES.map(cat => (
-                        <div key={cat.key} style={{ background: post.categories.includes(cat.key) ? CELL_GRADIENTS[cat.key] : "#DEDAD2" }} />
-                      ))}
-                    </div>
-                  )
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, width: "100%", height: "100%" }}>
+                    {CATEGORIES.map(cat => {
+                      const item = post.items.find((it: PostItem) => it.category === cat.key);
+                      return (
+                        <div key={cat.key} style={{ position: "relative", overflow: "hidden", background: CELL_GRADIENTS[cat.key] }}>
+                          {item?.signedUrl && (
+                            <img src={item.signedUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 ) : isFuture ? (
                   <div style={{ width: "100%", height: "100%", border: "1px solid #EDE6D8", borderRadius: 3, boxSizing: "border-box" }} />
                 ) : (
