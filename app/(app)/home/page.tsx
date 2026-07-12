@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
 import { Heart } from "lucide-react";
-import { Heart } from "lucide-react";
 import Link from "next/link";
 import { CATEGORIES, jstToday, type CategoryKey } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
