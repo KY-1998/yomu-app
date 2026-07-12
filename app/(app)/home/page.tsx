@@ -1,5 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
+import { Heart } from "lucide-react";
+import { Heart } from "lucide-react";
 import Link from "next/link";
 import { CATEGORIES, jstToday, type CategoryKey } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -11,7 +13,7 @@ const CELL_GRADIENTS: Record<CategoryKey, string> = {
   food: "linear-gradient(160deg, #D6B98C, #C7A76F)",
 };
 const CELL_TEXTURE = "repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0 7px, rgba(43,43,40,0.03) 7px 14px)";
-const LIKE_EMOJI = "❤️";
+const LIKE_EMOJI = "❤️"; // stored in DB as emoji
 
 type Reaction = { emoji: string; user_id: string };
 
@@ -177,7 +179,14 @@ export default function HomePage() {
                     cursor:"pointer", transition:"all 0.15s",
                   }}
                 >
-                  <span style={{ fontSize:14, filter: liked ? "none" : "grayscale(1)", opacity: liked ? 1 : 0.5 }}>❤️</span>
+                  <Heart
+                    size={16}
+                    style={{
+                      fill: liked ? "#E8663C" : "none",
+                      stroke: liked ? "#E8663C" : "#B5AFA6",
+                      transition: "all 0.15s",
+                    }}
+                  />
                   {likeCount > 0 && (
                     <span style={{ fontSize:11, color: liked ? "#E8663C" : "#C2B9A8", fontWeight:500 }}>{likeCount}</span>
                   )}
