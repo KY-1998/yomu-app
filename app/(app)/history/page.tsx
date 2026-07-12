@@ -1,4 +1,4 @@
-// ãããç»é¢ - æå¥ã«ã¬ã³ãã¼è¡¨ç¤º
+// きろく画面 - 月別カレンダー表示
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -116,23 +116,23 @@ export default function HistoryPage() {
 
   return (
     <div style={{ padding: "84px 24px 32px", minHeight: "100%", display: "flex", flexDirection: "column", gap: 32 }}>
-      {/* ãã¹ãããã */}
+      {/* マストヘッド */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <span style={{ fontSize: 40, fontWeight: 500, letterSpacing: "0.06em", lineHeight: 1.1 }}>
-          {month + 1}æã®<br />ããã
+          {month + 1}月の<br />きろく
         </span>
         {streak > 0 ? (
           <span style={{ fontSize: 11, letterSpacing: "0.08em", color: "#A79D8C" }}>
-            <span style={{ color: "#E8663C", fontWeight: 500 }}>{streak}æ¥</span>é£ç¶æç¨¿ä¸­
+            <span style={{ color: "#E8663C", fontWeight: 500 }}>{streak}日</span>連続投稿中
           </span>
         ) : (
           <span style={{ fontSize: 11, letterSpacing: "0.08em", color: "#A79D8C" }}>
-            {loading ? "èª­ã¿è¾¼ã¿ä¸­â¦" : "æç¨¿ããæ¥ãã«ã¬ã³ãã¼ã«æ®ãã¾ã"}
+            {loading ? "読み込み中…" : "投稿した日がカレンダーに残ります"}
           </span>
         )}
       </div>
 
-      {/* æãã */}
+      {/* 月ナビ */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <button
           onClick={prevMonth}
@@ -147,7 +147,7 @@ export default function HistoryPage() {
             fontFamily: "var(--font-instrument), sans-serif",
           }}
         >
-          â¹
+          ‹
         </button>
         <span style={{
           fontSize: 12,
@@ -172,13 +172,13 @@ export default function HistoryPage() {
             fontFamily: "var(--font-instrument), sans-serif",
           }}
         >
-          âº
+          ›
         </button>
       </div>
 
-      {/* ã«ã¬ã³ãã¼ */}
+      {/* カレンダー */}
       <div>
-        {/* ææ¥ãããã¼ */}
+        {/* 曜日ヘッダー */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 8 }}>
           {DAY_HEADERS.map((d, i) => (
             <span
@@ -196,9 +196,9 @@ export default function HistoryPage() {
           ))}
         </div>
 
-        {/* æ¥ä»ã»ã« */}
+        {/* 日付セル */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
-          {/* æåãã®ç©ºç½ */}
+          {/* 月初めの空白 */}
           {Array.from({ length: firstWeekday }).map((_, i) => (
             <div key={`pad-${i}`} style={{ aspectRatio: "1" }} />
           ))}
@@ -259,15 +259,15 @@ export default function HistoryPage() {
         </div>
       </div>
 
-      {/* å¡ä¾ */}
+      {/* 凡例 */}
       <div style={{ display: "flex", gap: 20, alignItems: "center", paddingTop: 8 }}>
         <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
           <div style={{ width: 14, height: 14, borderRadius: 2, background: "linear-gradient(160deg, #D9BFB0, #C9A28F)" }} />
-          <span style={{ fontSize: 9, color: "#A79D8C", letterSpacing: "0.12em" }}>ã¨ãããããæ¥</span>
+          <span style={{ fontSize: 9, color: "#A79D8C", letterSpacing: "0.12em" }}>とうこうした日</span>
         </div>
         <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
           <div style={{ width: 14, height: 14, borderRadius: 2, background: "#EFEADF" }} />
-          <span style={{ fontSize: 9, color: "#A79D8C", letterSpacing: "0.12em" }}>ãããã¿</span>
+          <span style={{ fontSize: 9, color: "#A79D8C", letterSpacing: "0.12em" }}>おやすみ</span>
         </div>
       </div>
     </div>
