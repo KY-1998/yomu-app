@@ -36,7 +36,6 @@ export default function JoinPage() {
 
   async function handleAccept() {
     setSubmitting(true);
-    // 関数引数名は invite_code (スキーマ定義に合わせる)
     const { error } = await supabase.rpc("redeem_invite", { invite_code: code });
     if (!error) {
       setStatus("success");
@@ -61,7 +60,7 @@ export default function JoinPage() {
         <div className="flex flex-col items-center gap-4 text-center">
           <p className="text-sm text-foreground">友達からの招待リンクです。</p>
           <p className="text-sm text-muted">ログインすると自動的に友達になれます。</p>
-          <Button onClick={() => router.push(`/login?next=${encodeURIComphonent(`/join/${code}`)}`)}>h
+          <Button onClick={() => router.push(`/login?next=${encodeURIComponent(`/join/${code}`)}`)}>
             ログインして友達になる
           </Button>
         </div>
