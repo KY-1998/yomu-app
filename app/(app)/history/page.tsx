@@ -12,11 +12,16 @@ const CELL_GRADIENTS: Record<string, string> = {
 };
 const CELL_TEXTURE = "repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0 7px, rgba(43,43,40,0.03) 7px 14px)";
 
-type DayPost = { post_id: string; categories: string[] };
+type PostItem = { category: string; image_url: string; signedUrl?: string };
+type DayPost = {
+  post_id: string;
+  categories: string[];
+  items: PostItem[];
+};
 type PostDetail = {
   date: string;
   note: string | null;
-  items: { category: string; signedUrl?: string }[];
+  items: PostItem[];
 };
 
 function toJSTDate() {
@@ -27,7 +32,7 @@ function makeDateStr(y: number, m: number, d: number) {
   return `${y}-${padZ(m + 1)}-${padZ(d)}`;
 }
 function formatDateJP(ds: string) {
-  const [y, m, d] = ds.split("-");
+  const [, m, d] = ds.split("-");
   return `${parseInt(m)}月${parseInt(d)}日`;
 }
 
@@ -46,7 +51,6 @@ export default function HistoryPage() {
 
   // モーダル
   const [selectedPost, setSelectedPost] = useState<PostDetail | null>(null);
-  const [modalLoading, setModalLoading] = useState(false);
 
   const loadMonth = useCallback(async (y: number, m: number) => {
     setLoading(true);
@@ -61,21 +65,40 @@ export default function HistoryPage() {
 
     const { data: posts } = await supabase
       .from("posts")
-      .select("id, post_date, post_items(category)")
+      .select("id, post_date, post_items(category, image_url)")
       .eq("user_id", user.id)
       .gte("post_date", start)
       .lte("post_date", end);
 
-    const map: Record<string, DayPost> = {};
-    if (posts) {
+    if (posts && posts.length > 0) {
+      // 全画像パスをまとめて signed URL 取得
+      const allPaths = posts.flatMap((p: any) =>
+        (p.post_items || []).map((i: any) => i.image_url)
+      );
+      const { data: signedData } = await supabase.storage
+        .from("post-images")
+        .createSignedUrls(allPaths, 3600);
+      const urlMap = Object.fromEntries(
+        (signedData || []).map((u: any) => [u.path, u.signedUrl])
+      );
+
+      const map: Record<string, DayPost> = {};
       posts.forEach((p: any) => {
+        const items: PostItem[] = (p.post_items || []).map((i: any) => ({
+          category: i.category,
+          image_url: i.image_url,
+          signedUrl: urlMap[i.image_url],
+        }));
         map[p.post_date] = {
           post_id: p.id,
-          categories: (p.post_items || []).map((i: any) => i.category),
+          categories: items.map(i => i.category),
+          items,
         };
       });
+      setPostsByDate(map);
+    } else {
+      setPostsByDate({});
     }
-    setPostsByDate(map);
 
     const nowY = jstNow.getFullYear();
     const nowM = jstNow.getMonth();
@@ -84,11 +107,9 @@ export default function HistoryPage() {
       past90.setDate(past90.getDate() - 90);
       const streakStart = makeDateStr(past90.getFullYear(), past90.getMonth(), past90.getDate());
       const { data: allPosts } = await supabase
-        .from("posts")
-        .select("post_date")
+        .from("posts").select("post_date")
         .eq("user_id", user.id)
-        .gte("post_date", streakStart)
-        .lte("post_date", todayStr);
+        .gte("post_date", streakStart).lte("post_date", todayStr);
       if (allPosts) {
         const dateSet = new Set(allPosts.map((p: any) => p.post_date));
         let s = 0;
@@ -105,28 +126,10 @@ export default function HistoryPage() {
 
   useEffect(() => { loadMonth(year, month); }, [year, month, loadMonth]);
 
-  async function openPost(ds: string) {
-    setModalLoading(true);
-    setSelectedPost({ date: ds, note: null, items: [] });
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("posts")
-      .select("id, note, post_items(category, image_url)")
-      .eq("post_date", ds)
-      .eq("user_id", userId!)
-      .maybeSingle();
-    if (data) {
-      const items = await Promise.all(
-        (data.post_items || []).map(async (item: any) => {
-          const { data: urlData } = await supabase.storage
-            .from("post-images")
-            .createSignedUrl(item.image_url, 3600);
-          return { category: item.category, signedUrl: urlData?.signedUrl };
-        })
-      );
-      setSelectedPost({ date: ds, note: data.note, items });
-    }
-    setModalLoading(false);
+  function openPost(ds: string) {
+    const post = postsByDate[ds];
+    if (!post) return;
+    setSelectedPost({ date: ds, note: null, items: post.items });
   }
 
   const prevMonth = () => {
@@ -166,9 +169,7 @@ export default function HistoryPage() {
       {/* 月ナビ */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <button onClick={prevMonth} style={{ background: "none", border: "none", cursor: "pointer", color: "#A79D8C", fontSize: 20, padding: "0 12px", lineHeight: 1, fontFamily: "var(--font-instrument), sans-serif" }}>‹</button>
-        <span style={{ fontSize: 12, fontWeight: 400, letterSpacing: "0.16em", color: "#2B2B28", fontFamily: "var(--font-instrument), sans-serif" }}>
-          {year}.{padZ(month + 1)}
-        </span>
+        <span style={{ fontSize: 12, fontWeight: 400, letterSpacing: "0.16em", color: "#2B2B28", fontFamily: "var(--font-instrument), sans-serif" }}>{year}.{padZ(month + 1)}</span>
         <button onClick={nextMonth} disabled={isCurrentMonth} style={{ background: "none", border: "none", cursor: isCurrentMonth ? "default" : "pointer", color: isCurrentMonth ? "#DDD3C0" : "#A79D8C", fontSize: 20, padding: "0 12px", lineHeight: 1, fontFamily: "var(--font-instrument), sans-serif" }}>›</button>
       </div>
 
@@ -187,18 +188,37 @@ export default function HistoryPage() {
             const post = postsByDate[ds];
             const isToday = ds === todayStr;
             const isFuture = ds > todayStr;
+            // face カテゴリの写真をサムネイルとして使う
+            const thumb = post?.items.find(it => it.category === "face")?.signedUrl
+              || post?.items[0]?.signedUrl;
+
             return (
               <div
                 key={ds}
                 onClick={() => post && openPost(ds)}
-                style={{ aspectRatio: "1", cursor: post ? "pointer" : "default", borderRadius: 3, overflow: "hidden", boxShadow: isToday ? "0 0 0 1.5px #E8663C" : "none", position: "relative" }}
+                style={{
+                  aspectRatio: "1",
+                  cursor: post ? "pointer" : "default",
+                  borderRadius: 3,
+                  overflow: "hidden",
+                  boxShadow: isToday ? "0 0 0 1.5px #E8663C" : "none",
+                  position: "relative",
+                }}
               >
                 {post ? (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, width: "100%", height: "100%" }}>
-                    {CATEGORIES.map(cat => (
-                      <div key={cat.key} style={{ background: post.categories.includes(cat.key) ? CELL_GRADIENTS[cat.key] : "#DEDAD2" }} />
-                    ))}
-                  </div>
+                  thumb ? (
+                    <img
+                      src={thumb}
+                      alt=""
+                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                    />
+                  ) : (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, width: "100%", height: "100%" }}>
+                      {CATEGORIES.map(cat => (
+                        <div key={cat.key} style={{ background: post.categories.includes(cat.key) ? CELL_GRADIENTS[cat.key] : "#DEDAD2" }} />
+                      ))}
+                    </div>
+                  )
                 ) : isFuture ? (
                   <div style={{ width: "100%", height: "100%", border: "1px solid #EDE6D8", borderRadius: 3, boxSizing: "border-box" }} />
                 ) : (
@@ -245,51 +265,25 @@ export default function HistoryPage() {
               overflow: "hidden",
             }}
           >
-            {/* ヘッダー */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 24px 16px" }}>
-              <span style={{ fontSize: 14, fontWeight: 500, letterSpacing: "0.08em" }}>
-                {formatDateJP(selectedPost.date)}
-              </span>
-              <button
-                onClick={() => setSelectedPost(null)}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "#A79D8C", fontSize: 20, lineHeight: 1, padding: 4 }}
-              >
-                ×
-              </button>
+              <span style={{ fontSize: 14, fontWeight: 500, letterSpacing: "0.08em" }}>{formatDateJP(selectedPost.date)}</span>
+              <button onClick={() => setSelectedPost(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#A79D8C", fontSize: 20, lineHeight: 1, padding: 4 }}>×</button>
             </div>
-
-            {/* 4コマグリッド */}
-            {modalLoading ? (
-              <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
-                <span style={{ fontSize: 11, color: "#A79D8C", letterSpacing: "0.14em" }}>読み込み中…</span>
-              </div>
-            ) : (
-              <>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
-                  {CATEGORIES.map(c => {
-                    const item = itemsByCategory[c.key];
-                    return (
-                      <div key={c.key} style={{ aspectRatio: "1", position: "relative", overflow: "hidden", background: item ? `${CELL_TEXTURE}, ${CELL_GRADIENTS[c.key]}` : "#EAE2D2" }}>
-                        {item?.signedUrl && (
-                          <img src={item.signedUrl} alt={c.label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                        )}
-                        {item && (
-                          <span style={{ position: "absolute", top: 10, left: 10, fontSize: 8, letterSpacing: "0.28em", color: "rgba(250,247,242,0.95)", fontWeight: 500, textShadow: "0 0 8px rgba(43,43,40,0.3)" }}>
-                            {c.label}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                {selectedPost.note && (
-                  <div style={{ padding: "16px 24px" }}>
-                    <p style={{ margin: 0, fontSize: 11, fontWeight: 300, lineHeight: 2, color: "#6E675C", letterSpacing: "0.04em" }}>
-                      {selectedPost.note}
-                    </p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+              {CATEGORIES.map(c => {
+                const item = itemsByCategory[c.key];
+                return (
+                  <div key={c.key} style={{ aspectRatio: "1", position: "relative", overflow: "hidden", background: item ? `${CELL_TEXTURE}, ${CELL_GRADIENTS[c.key]}` : "#EAE2D2" }}>
+                    {item?.signedUrl && <img src={item.signedUrl} alt={c.label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+                    {item && <span style={{ position: "absolute", top: 10, left: 10, fontSize: 8, letterSpacing: "0.28em", color: "rgba(250,247,242,0.95)", fontWeight: 500, textShadow: "0 0 8px rgba(43,43,40,0.3)" }}>{c.label}</span>}
                   </div>
-                )}
-              </>
+                );
+              })}
+            </div>
+            {selectedPost.note && (
+              <div style={{ padding: "16px 24px" }}>
+                <p style={{ margin: 0, fontSize: 11, fontWeight: 300, lineHeight: 2, color: "#6E675C", letterSpacing: "0.04em" }}>{selectedPost.note}</p>
+              </div>
             )}
           </div>
         </div>
