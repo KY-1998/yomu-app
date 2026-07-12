@@ -201,7 +201,7 @@ export default function HistoryPage() {
                   position: "relative",
                 }}
               >
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, width: "100%", height: "100%" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", gap: 1, width: "100%", height: "100%" }}>
                   {CATEGORIES.map(cat => {
                     const item = post?.items.find((it: PostItem) => it.category === cat.key);
                     const bg = post
@@ -218,10 +218,12 @@ export default function HistoryPage() {
                           background: bg,
                           outline: isFuture ? "0.5px solid #E8E0D2" : "none",
                           outlineOffset: "-0.5px",
+                          width: "100%",
+                          height: "100%",
                         }}
                       >
                         {item?.signedUrl && (
-                          <img src={item.signedUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                          <img src={item.signedUrl} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                         )}
                       </div>
                     );
