@@ -201,24 +201,32 @@ export default function HistoryPage() {
                   position: "relative",
                 }}
               >
-                {post ? (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, width: "100%", height: "100%" }}>
-                    {CATEGORIES.map(cat => {
-                      const item = post.items.find((it: PostItem) => it.category === cat.key);
-                      return (
-                        <div key={cat.key} style={{ position: "relative", overflow: "hidden", background: CELL_GRADIENTS[cat.key] }}>
-                          {item?.signedUrl && (
-                            <img src={item.signedUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : isFuture ? (
-                  <div style={{ width: "100%", height: "100%", border: "1px solid #EDE6D8", borderRadius: 3, boxSizing: "border-box" }} />
-                ) : (
-                  <div style={{ width: "100%", height: "100%", background: "#EFEADF", borderRadius: 3 }} />
-                )}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, width: "100%", height: "100%" }}>
+                  {CATEGORIES.map(cat => {
+                    const item = post?.items.find((it: PostItem) => it.category === cat.key);
+                    const bg = post
+                      ? CELL_GRADIENTS[cat.key]
+                      : isFuture
+                      ? "#F5F1EA"
+                      : "#EFEADF";
+                    return (
+                      <div
+                        key={cat.key}
+                        style={{
+                          position: "relative",
+                          overflow: "hidden",
+                          background: bg,
+                          outline: isFuture ? "0.5px solid #E8E0D2" : "none",
+                          outlineOffset: "-0.5px",
+                        }}
+                      >
+                        {item?.signedUrl && (
+                          <img src={item.signedUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             );
           })}
